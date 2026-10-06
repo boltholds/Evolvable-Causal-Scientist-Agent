@@ -123,7 +123,26 @@ Use when the repair question is selection among a known local family of modes/mo
 
 ### BOCPD
 
+**Status: integrated with a pinned external BOCPD implementation.**
+
 Use when evidence suggests a temporal regime shift.
+
+The current backend uses `fiannai/bocd` at a pinned revision and feeds it a
+cross-experiment signal derived from the evidence ledger:
+
+`1 - P(observed outcome | current theory population)`.
+
+This avoids treating a change in intervention itself as a time-series regime
+change. Detection uses a sharp reset in the MAP run length (the recommended
+signal for constant hazard in the upstream library), plus a minimum
+post-change run length before emitting a `REGIME_CHANGE` proposal. A lone
+terminal anomaly therefore remains available to TTT, causal-structure, fault,
+or program-repair engines without being prematurely classified as a temporal
+regime change.
+
+The resulting diagnostic artifact records the discrepancy signal, experiment
+IDs, run-length trace, detector parameters, reset step, and pinned upstream
+revision.
 
 ### Fault Diagnosis Toolbox
 
