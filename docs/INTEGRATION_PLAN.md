@@ -102,8 +102,20 @@ Use for resettable deterministic finite-state regions:
 The current adapter reuses the existing BCS TTT bridge at the pinned BCS
 revision, executes the real Java/LearnLib learner, and returns a
 content-addressed `TheoryProposal` in the `STATE_MEMORY` repair family.
-The learned Mealy machine is not automatically inserted into the causal
-posterior until a compatible prediction/evidence projection exists.
+
+**State projection is now integrated.** A minimal learned Mealy machine can be
+projected into a residual-state feature. Admission is gated by an aliasing
+witness: the same current causal-state key must correspond to two different
+minimal TTT residual states. A qualified state-augmented theory receives an
+explicit small prior mass while preserving the relative mass of existing
+theories. For interventions present in the frozen TTT alphabet, the projected
+theory emits `PredictiveDistribution` values in the same experiment space as
+BCS theories and can therefore participate in information-directed selection.
+
+The current end-to-end test uses a deliberately coarse synthetic causal-state
+key to validate the mechanism. Demonstrating genuine missing state in a real
+BCS representation remains an experimental acceptance criterion rather than
+an architectural assumption.
 
 ### MMAE / IMM
 
