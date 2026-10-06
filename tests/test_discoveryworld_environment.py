@@ -1,5 +1,6 @@
 import json
 
+from ecsa.benchmarks.discoveryworld.contracts import PolicyDecision
 from ecsa.benchmarks.discoveryworld.environment import (
     DiscoveryWorldEnvironmentAdapter,
 )
@@ -59,3 +60,29 @@ def test_policy_surface_never_reads_scorecard(monkeypatch) -> None:
     env.observe()
     env.available_actions()
     env.teleport_locations()
+
+
+
+def test_policy_decision_accepts_discoveryworld_dialog_packet() -> None:
+    decision = PolicyDecision(
+        action={"chosen_dialog_option_int": 2},
+    )
+    assert decision.action == {"chosen_dialog_option_int": 2}
+
+
+def test_dialog_action_packet_ticks_exactly_once(monkeypatch) -> None:
+    env = DiscoveryWorldEnvironmentAdapter.reactor_lab_normal(0)
+    before = env.steps
+    received = []
+
+    def perform(**kwargs):
+        received.append(kwargs["actionJSON"])
+        return {"success": True, "errors": []}
+
+    monkeypatch.setattr(env._api, "performAgentAction", perform)
+
+    result = env.act({"chosen_dialog_option_int": 1})
+
+    assert result.success is True
+    assert received == [{"chosen_dialog_option_int": 1}]
+    assert env.steps == before + 1
