@@ -67,6 +67,7 @@ class DreamCoderRepairEngine:
         *,
         cache_root: Path,
         primitives: tuple[str, ...] = ("not", "and", "or"),
+        library_programs: tuple[str, ...] = (),
         maximum_mdl: float = 14.0,
         maximum_programs: int = 200_000,
         timeout_seconds: float = 20.0,
@@ -95,6 +96,16 @@ class DreamCoderRepairEngine:
         if unsupported:
             raise ValueError(f"unsupported boolean primitives: {sorted(unsupported)}")
 
+        if not isinstance(library_programs, tuple):
+            raise ValueError("library_programs must be immutable")
+        if not all(
+            isinstance(program, str) and program
+            for program in library_programs
+        ):
+            raise ValueError("library programs must be nonempty strings")
+        if len(set(library_programs)) != len(library_programs):
+            raise ValueError("library programs must be unique")
+
         if maximum_mdl <= 0:
             raise ValueError("maximum_mdl must be positive")
         if type(maximum_programs) is not int or maximum_programs < 1:
@@ -105,6 +116,7 @@ class DreamCoderRepairEngine:
         self.examples = examples
         self.cache_root = Path(cache_root)
         self.primitives = primitives
+        self.library_programs = library_programs
         self.maximum_mdl = float(maximum_mdl)
         self.maximum_programs = maximum_programs
         self.timeout_seconds = float(timeout_seconds)
@@ -129,6 +141,7 @@ class DreamCoderRepairEngine:
             "domain": "boolean",
             "arity": self.arity,
             "primitives": list(self.primitives),
+            "library_programs": list(self.library_programs),
             "examples": [
                 {
                     "inputs": list(example.inputs),
@@ -221,6 +234,7 @@ class DreamCoderRepairEngine:
         payload = {
             "arity": self.arity,
             "primitives": list(self.primitives),
+            "library_programs": list(self.library_programs),
             "examples": [
                 {
                     "inputs": list(example.inputs),
