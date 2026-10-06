@@ -206,6 +206,7 @@ class DreamCoderRepairEngine:
             if not existing_pythonpath
             else str(source_root) + os.pathsep + existing_pythonpath
         )
+        environment["ECSA_DREAMCODER_SOURCE_ROOT"] = str(source_root)
         try:
             process = subprocess.run(
                 [
