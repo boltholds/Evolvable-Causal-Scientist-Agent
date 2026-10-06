@@ -451,10 +451,15 @@ hypotheses preserve `SPECIALIZES` lineage to the source mechanism.
 Cross-context lookup is deliberately separated:
 
 - `find_applicable(context)` requires the current seed/context to be in scope;
-- `find_transfer_candidates(context)` ignores only context membership while
-  requiring compatible regime/domain/task/assumptions;
+- `find_transfer_candidates(context)` ignores source context membership while
+  requiring compatible regime/domain/task/assumptions, but excludes mechanisms
+  already applicable in the target context and excludes `SPLIT` mechanisms;
 - transfer candidates are guidance for target validation, not executable facts;
-- failed source-backed prospective validation is counted as a false transfer.
+- policy output separates frozen hypotheses from explicit
+  `validation_hypothesis_ids`; a source-backed hypothesis is counted as tested
+  only when the policy commits that action to its prospective validation;
+- failed explicitly committed source-backed validation is counted as a false
+  transfer, while an untested hypothesis is not.
 
 The arena implements progressive online transfer in seed order 0→4:
 
