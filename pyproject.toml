@@ -14,6 +14,7 @@ test = ["pytest>=8,<10"]
 bcs = ["behavioral-causal-state @ git+https://github.com/boltholds/Behavioral-Causal-State.git@ae8d331e3a1bcac55c740e35720672c7d2bf7106"]
 bocpd = ["bocd @ git+https://github.com/fiannai/bocd.git@0c09315e9102ddea885bb7164e47b61a95e99dac"]
 dreamcoder = ["frozendict>=2,<3"]
+mlmd = ["ml-metadata==1.21.0"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
