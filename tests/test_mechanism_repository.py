@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from ecsa.adapters.mlmd import MLMDMechanismRepository
 from ecsa.mechanisms import (
     ApplicabilityContext,
@@ -153,3 +155,14 @@ def test_deprecation_creates_new_version_and_preserves_old_lineage(
     assert lineage is not None
     assert lineage.execution_kind == "MechanismDeprecation"
     assert lineage.prior_version == ("door-law", 1)
+
+
+def test_scope_cannot_default_to_global_applicability() -> None:
+    with pytest.raises(ValueError, match="scope"):
+        MechanismScope(
+            context_ids=(),
+            regime_ids=(),
+            domain_ids=(),
+            task_ids=(),
+            required_assumptions=("deterministic",),
+        )
