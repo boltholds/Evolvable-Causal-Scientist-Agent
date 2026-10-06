@@ -125,11 +125,13 @@ class RecordingPolicy:
         events: list[str],
         *,
         hypothesis: ReactorMechanismHypothesis | None = None,
+        commit_validation: bool = True,
     ) -> None:
         self.events = events
         self.contexts = []
         self.observations = []
         self.hypothesis = hypothesis
+        self.commit_validation = commit_validation
 
     def decide(
         self,
@@ -146,9 +148,15 @@ class RecordingPolicy:
             if self.hypothesis is not None
             else ()
         )
+        validation_ids = (
+            (self.hypothesis.hypothesis_id,)
+            if self.hypothesis is not None and self.commit_validation
+            else ()
+        )
         return PolicyDecision(
             action={"action": "PICKUP", "arg1": 404},
             hypotheses=hypotheses,
+            validation_hypothesis_ids=validation_ids,
         )
 
 
@@ -290,6 +298,96 @@ def test_validated_transfer_is_admitted_as_target_specialization(
     assert target.relations[0].target == source.ref
     assert repository.find_applicable(reactor_context(1)) == (target,)
 
+
+
+
+def test_source_hypothesis_without_validation_commitment_is_not_false_transfer(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    events: list[str] = []
+    fake = FakeEnvironment(events)
+    patch_environment(monkeypatch, fake)
+    repository = MLMDMechanismRepository.sqlite(
+        tmp_path / "mechanisms.sqlite"
+    )
+    source = source_mechanism()
+    repository.admit(source)
+    h = ReactorMechanismHypothesis(
+        hypothesis_id="candidate-only",
+        measurement_kind=MeasurementKind.DENSITY,
+        slope=100.0,
+        offset=90.0,
+        source_evidence_ids=("source-evidence",),
+        predictions=(
+            ReactorFrequencyPrediction(
+                target_crystal_uuid=202,
+                target_reactor_uuid=404,
+                predicted_frequency=1324.0,
+                frozen_step=0,
+            ),
+        ),
+        source_mechanism=source.ref,
+    )
+
+    result = run_episode(
+        config=config(seed=1),
+        policy=RecordingPolicy(
+            events,
+            hypothesis=h,
+            commit_validation=False,
+        ),
+        repository=repository,
+        output_dir=tmp_path / "run",
+    )
+
+    metrics = json.loads((tmp_path / "run" / "metrics.json").read_text())
+    assert result.admitted_mechanisms == ()
+    assert metrics["transfer_candidates_tested"] == 0
+    assert metrics["false_transfer_events"] == 0
+
+
+def test_committed_source_hypothesis_failure_counts_false_transfer(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    events: list[str] = []
+    fake = FakeEnvironment(events)
+    patch_environment(monkeypatch, fake)
+    repository = MLMDMechanismRepository.sqlite(
+        tmp_path / "mechanisms.sqlite"
+    )
+    source = source_mechanism()
+    repository.admit(source)
+    h = ReactorMechanismHypothesis(
+        hypothesis_id="committed-transfer",
+        measurement_kind=MeasurementKind.DENSITY,
+        slope=100.0,
+        offset=90.0,
+        source_evidence_ids=("source-evidence",),
+        predictions=(
+            ReactorFrequencyPrediction(
+                target_crystal_uuid=202,
+                target_reactor_uuid=404,
+                predicted_frequency=1324.0,
+                frozen_step=0,
+            ),
+        ),
+        source_mechanism=source.ref,
+    )
+
+    result = run_episode(
+        config=config(seed=1),
+        policy=RecordingPolicy(events, hypothesis=h),
+        repository=repository,
+        output_dir=tmp_path / "run",
+    )
+
+    metrics = json.loads((tmp_path / "run" / "metrics.json").read_text())
+    assert result.admitted_mechanisms == ()
+    assert metrics["transfer_candidates_tested"] == 1
+    assert metrics["transfer_candidates_rejected"] == 1
+    assert metrics["false_transfer_events"] == 1
 
 def test_episode_stops_at_max_steps_when_environment_is_not_done(
     tmp_path: Path,
