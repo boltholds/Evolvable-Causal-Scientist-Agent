@@ -36,6 +36,16 @@ from ecsa.mechanisms import (
 def observation(
     reactor_name: str = "crystal reactor (uncalibrated)",
 ) -> dict:
+    dialog_box = {}
+    if "(activated)" in reactor_name:
+        dialog_box = {
+            "dialogIn": (
+                "Hello, I am Crystal Reactor #3.\n"
+                "The current resonance frequence is: 1324.0 Hertz.\n"
+                "The allowable range is 0 to 10,000 Hz."
+            ),
+            "dialogOptions": {},
+        }
     return {
         "ui": {
             "taskProgress": [
@@ -45,6 +55,7 @@ def observation(
                 }
             ],
             "lastActionMessage": "",
+            "dialog_box": dialog_box,
             "inventoryObjects": [],
             "accessibleEnvironmentObjects": [
                 {
