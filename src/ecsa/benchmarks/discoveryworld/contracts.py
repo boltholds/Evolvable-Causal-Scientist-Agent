@@ -203,6 +203,7 @@ class PolicyDecision:
     reasoning: str | None = None
     memory: str | None = None
     hypotheses: tuple[ReactorMechanismHypothesis, ...] = ()
+    validation_hypothesis_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.action, dict) or not isinstance(
@@ -211,6 +212,18 @@ class PolicyDecision:
             raise ValueError("policy decision requires an action packet")
         if not isinstance(self.hypotheses, tuple):
             raise ValueError("hypotheses must be immutable")
+        if (
+            not isinstance(self.validation_hypothesis_ids, tuple)
+            or not all(
+                isinstance(value, str) and value
+                for value in self.validation_hypothesis_ids
+            )
+            or len(set(self.validation_hypothesis_ids))
+            != len(self.validation_hypothesis_ids)
+        ):
+            raise ValueError(
+                "validation_hypothesis_ids must be unique immutable strings"
+            )
 
 
 @runtime_checkable
