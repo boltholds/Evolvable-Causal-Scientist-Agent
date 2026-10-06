@@ -5,6 +5,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from ml_metadata import errors as mlmd_errors
+from ml_metadata import errors as mlmd_errors
 from ml_metadata.metadata_store import metadata_store
 from ml_metadata.proto import metadata_store_pb2
 
@@ -516,6 +517,17 @@ class MLMDMechanismRepository(MechanismRepository):
                 "duplicate MLMD mechanism artifact identity"
             )
         return matches[0]
+
+    def _get_artifacts_by_external_ids_or_empty(
+        self,
+        external_id: str,
+    ):
+        try:
+            return self._store.get_artifacts_by_external_ids(
+                [external_id]
+            )
+        except mlmd_errors.NotFoundError:
+            return []
 
     @staticmethod
     def _mechanism_external_id(
