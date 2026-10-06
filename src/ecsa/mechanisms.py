@@ -14,17 +14,23 @@ class MechanismKind(StrEnum):
     SYMBOLIC_RULE = "symbolic_rule"
 
 
-class MechanismStatus(StrEnum):
+class EpistemicStatus(StrEnum):
     CANDIDATE = "candidate"
     QUALIFIED = "qualified"
     ADMITTED = "admitted"
     DEPRECATED = "deprecated"
 
 
-class MechanismTransferStatus(StrEnum):
+MechanismStatus = EpistemicStatus
+
+
+class TransferStatus(StrEnum):
     SHARED = "shared"
     CONTEXT_SPECIALIZED = "context_specialized"
     SPLIT = "split"
+
+
+MechanismTransferStatus = TransferStatus
 
 
 class MechanismRelationKind(StrEnum):
@@ -43,24 +49,56 @@ def _validate_ids(name: str, values: tuple[str, ...]) -> None:
         raise ValueError(f"{name} values must be unique")
 
 
-@dataclass(frozen=True)
-class MechanismRelation:
-    kind: MechanismRelationKind
-    target_mechanism_id: str
-    target_version: int
+@dataclass(frozen=True, order=True)
+class MechanismVersionRef:
+    mechanism_id: str
+    version: int
 
     def __post_init__(self) -> None:
-        if not isinstance(self.kind, MechanismRelationKind):
+        if not self.mechanism_id:
+            raise ValueError("mechanism_id is required")
+        if type(self.version) is not int or self.version < 1:
+            raise ValueError("version must be a positive integer")
+
+
+@dataclass(frozen=True, init=False)
+class MechanismRelation:
+    kind: MechanismRelationKind
+    target: MechanismVersionRef
+
+    def __init__(
+        self,
+        kind: MechanismRelationKind,
+        target: MechanismVersionRef | str,
+        target_version: int | None = None,
+    ) -> None:
+        if not isinstance(kind, MechanismRelationKind):
             raise ValueError("typed mechanism relation kind required")
-        if not self.target_mechanism_id:
-            raise ValueError("target_mechanism_id is required")
-        if type(self.target_version) is not int or self.target_version < 1:
-            raise ValueError("target_version must be a positive integer")
+        if isinstance(target, MechanismVersionRef):
+            if target_version is not None:
+                raise ValueError(
+                    "target_version is redundant with MechanismVersionRef"
+                )
+            ref = target
+        else:
+            if target_version is None:
+                raise ValueError("target_version is required")
+            ref = MechanismVersionRef(target, target_version)
+        object.__setattr__(self, "kind", kind)
+        object.__setattr__(self, "target", ref)
+
+    @property
+    def target_mechanism_id(self) -> str:
+        return self.target.mechanism_id
+
+    @property
+    def target_version(self) -> int:
+        return self.target.version
 
 
 @dataclass(frozen=True)
 class MechanismScope:
-    context_ids: tuple[str, ...] = ()
+    context_ids: tuple[str, ...]
     regime_ids: tuple[str, ...] = ()
     domain_ids: tuple[str, ...] = ()
     task_ids: tuple[str, ...] = ()
@@ -68,6 +106,10 @@ class MechanismScope:
 
     def __post_init__(self) -> None:
         _validate_ids("context_ids", self.context_ids)
+        if not self.context_ids:
+            raise ValueError(
+                "mechanism scope requires at least one explicit context"
+            )
         _validate_ids("regime_ids", self.regime_ids)
         _validate_ids("domain_ids", self.domain_ids)
         _validate_ids("task_ids", self.task_ids)
@@ -106,56 +148,194 @@ class ApplicabilityContext:
             ("domain_id", self.domain_id),
             ("task_id", self.task_id),
         ):
-            if value is not None and (not isinstance(value, str) or not value):
-                raise ValueError(f"{name} must be None or a nonempty string")
+            if value is not None and (
+                not isinstance(value, str) or not value
+            ):
+                raise ValueError(
+                    f"{name} must be None or a nonempty string"
+                )
         _validate_ids("assumptions", self.assumptions)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, init=False)
 class MechanismRecord:
     mechanism_id: str
     version: int
     kind: MechanismKind
-    status: MechanismStatus
-    representation_artifact_id: str
+    epistemic_status: EpistemicStatus
+    representation_artifact: str
     scope: MechanismScope
-    transfer: MechanismTransferStatus
-    parameter_bindings: tuple[tuple[str, Scalar], ...] = ()
-    supporting_evidence_ids: tuple[str, ...] = ()
-    contradicting_evidence_ids: tuple[str, ...] = ()
-    provenance_artifact_ids: tuple[str, ...] = ()
-    relations: tuple[MechanismRelation, ...] = ()
+    transfer_status: TransferStatus
+    parameters: tuple[tuple[str, Scalar], ...]
+    supporting_evidence: tuple[str, ...]
+    contradicting_evidence: tuple[str, ...]
+    provenance: tuple[str, ...]
+    relations: tuple[MechanismRelation, ...]
 
-    def __post_init__(self) -> None:
+    def __init__(
+        self,
+        mechanism_id: str,
+        version: int,
+        kind: MechanismKind,
+        epistemic_status: EpistemicStatus | None = None,
+        representation_artifact: str | None = None,
+        scope: MechanismScope | None = None,
+        transfer_status: TransferStatus | None = None,
+        parameters: tuple[tuple[str, Scalar], ...] | None = None,
+        supporting_evidence: tuple[str, ...] | None = None,
+        contradicting_evidence: tuple[str, ...] | None = None,
+        provenance: tuple[str, ...] | None = None,
+        relations: tuple[MechanismRelation, ...] = (),
+        *,
+        status: EpistemicStatus | None = None,
+        representation_artifact_id: str | None = None,
+        transfer: TransferStatus | None = None,
+        parameter_bindings: tuple[tuple[str, Scalar], ...] | None = None,
+        supporting_evidence_ids: tuple[str, ...] | None = None,
+        contradicting_evidence_ids: tuple[str, ...] | None = None,
+        provenance_artifact_ids: tuple[str, ...] | None = None,
+    ) -> None:
+        def choose(name: str, canonical, alias, default=None):
+            if canonical is not None and alias is not None:
+                if canonical != alias:
+                    raise ValueError(
+                        f"conflicting canonical/compatibility values for {name}"
+                    )
+                return canonical
+            if canonical is not None:
+                return canonical
+            if alias is not None:
+                return alias
+            return default
+
+        resolved_status = choose(
+            "epistemic_status",
+            epistemic_status,
+            status,
+        )
+        resolved_representation = choose(
+            "representation_artifact",
+            representation_artifact,
+            representation_artifact_id,
+        )
+        resolved_transfer = choose(
+            "transfer_status",
+            transfer_status,
+            transfer,
+        )
+        resolved_parameters = choose(
+            "parameters",
+            parameters,
+            parameter_bindings,
+            (),
+        )
+        resolved_support = choose(
+            "supporting_evidence",
+            supporting_evidence,
+            supporting_evidence_ids,
+            (),
+        )
+        resolved_contradictions = choose(
+            "contradicting_evidence",
+            contradicting_evidence,
+            contradicting_evidence_ids,
+            (),
+        )
+        resolved_provenance = choose(
+            "provenance",
+            provenance,
+            provenance_artifact_ids,
+            (),
+        )
+
+        object.__setattr__(self, "mechanism_id", mechanism_id)
+        object.__setattr__(self, "version", version)
+        object.__setattr__(self, "kind", kind)
+        object.__setattr__(
+            self,
+            "epistemic_status",
+            resolved_status,
+        )
+        object.__setattr__(
+            self,
+            "representation_artifact",
+            resolved_representation,
+        )
+        object.__setattr__(self, "scope", scope)
+        object.__setattr__(
+            self,
+            "transfer_status",
+            resolved_transfer,
+        )
+        object.__setattr__(
+            self,
+            "parameters",
+            resolved_parameters,
+        )
+        object.__setattr__(
+            self,
+            "supporting_evidence",
+            resolved_support,
+        )
+        object.__setattr__(
+            self,
+            "contradicting_evidence",
+            resolved_contradictions,
+        )
+        object.__setattr__(
+            self,
+            "provenance",
+            resolved_provenance,
+        )
+        object.__setattr__(self, "relations", relations)
+        self._validate()
+
+    def _validate(self) -> None:
         if not self.mechanism_id:
             raise ValueError("mechanism_id is required")
         if type(self.version) is not int or self.version < 1:
             raise ValueError("version must be a positive integer")
         if not isinstance(self.kind, MechanismKind):
             raise ValueError("typed mechanism kind required")
-        if not isinstance(self.status, MechanismStatus):
-            raise ValueError("typed mechanism status required")
-        if not self.representation_artifact_id:
-            raise ValueError("representation_artifact_id is required")
+        if not isinstance(self.epistemic_status, EpistemicStatus):
+            raise ValueError("typed epistemic status required")
+        if not self.representation_artifact:
+            raise ValueError("representation_artifact is required")
         if not isinstance(self.scope, MechanismScope):
             raise ValueError("typed mechanism scope required")
-        if not isinstance(self.transfer, MechanismTransferStatus):
+        if not isinstance(self.transfer_status, TransferStatus):
             raise ValueError("typed transfer status required")
 
-        if not isinstance(self.parameter_bindings, tuple):
-            raise ValueError("parameter_bindings must be immutable")
+        if not isinstance(self.parameters, tuple):
+            raise ValueError("parameters must be immutable")
         parameter_names: set[str] = set()
-        for name, value in self.parameter_bindings:
-            if not isinstance(name, str) or not name or name in parameter_names:
-                raise ValueError("parameter names must be unique and nonempty")
+        for name, value in self.parameters:
+            if (
+                not isinstance(name, str)
+                or not name
+                or name in parameter_names
+            ):
+                raise ValueError(
+                    "parameter names must be unique and nonempty"
+                )
             parameter_names.add(name)
             if not isinstance(value, (bool, int, float, str)):
-                raise ValueError("unsupported mechanism parameter value")
+                raise ValueError(
+                    "unsupported mechanism parameter value"
+                )
 
-        _validate_ids("supporting_evidence_ids", self.supporting_evidence_ids)
-        _validate_ids("contradicting_evidence_ids", self.contradicting_evidence_ids)
-        _validate_ids("provenance_artifact_ids", self.provenance_artifact_ids)
-        if set(self.supporting_evidence_ids) & set(self.contradicting_evidence_ids):
+        _validate_ids(
+            "supporting_evidence",
+            self.supporting_evidence,
+        )
+        _validate_ids(
+            "contradicting_evidence",
+            self.contradicting_evidence,
+        )
+        _validate_ids("provenance", self.provenance)
+        if set(self.supporting_evidence) & set(
+            self.contradicting_evidence
+        ):
             raise ValueError(
                 "the same evidence cannot be both supporting and contradicting"
             )
@@ -164,35 +344,54 @@ class MechanismRecord:
             isinstance(relation, MechanismRelation)
             for relation in self.relations
         ):
-            raise ValueError("relations must be immutable typed values")
-        relation_keys = tuple(
-            (
-                relation.kind,
-                relation.target_mechanism_id,
-                relation.target_version,
+            raise ValueError(
+                "relations must be immutable typed values"
             )
+        relation_keys = tuple(
+            (relation.kind, relation.target)
             for relation in self.relations
         )
         if len(set(relation_keys)) != len(relation_keys):
             raise ValueError("mechanism relations must be unique")
 
-        if (
-            self.status is MechanismStatus.ADMITTED
-            and self.transfer is MechanismTransferStatus.SPLIT
-            and not (
-                self.scope.context_ids
-                or self.scope.regime_ids
-                or self.scope.domain_ids
-                or self.scope.task_ids
-            )
-        ):
-            raise ValueError(
-                "an admitted split mechanism requires explicit applicability scope"
-            )
+    @property
+    def ref(self) -> MechanismVersionRef:
+        return MechanismVersionRef(
+            self.mechanism_id,
+            self.version,
+        )
 
     @property
     def identity(self) -> tuple[str, int]:
         return self.mechanism_id, self.version
+
+    @property
+    def status(self) -> EpistemicStatus:
+        return self.epistemic_status
+
+    @property
+    def representation_artifact_id(self) -> str:
+        return self.representation_artifact
+
+    @property
+    def transfer(self) -> TransferStatus:
+        return self.transfer_status
+
+    @property
+    def parameter_bindings(self) -> tuple[tuple[str, Scalar], ...]:
+        return self.parameters
+
+    @property
+    def supporting_evidence_ids(self) -> tuple[str, ...]:
+        return self.supporting_evidence
+
+    @property
+    def contradicting_evidence_ids(self) -> tuple[str, ...]:
+        return self.contradicting_evidence
+
+    @property
+    def provenance_artifact_ids(self) -> tuple[str, ...]:
+        return self.provenance
 
     def to_wire(self) -> dict:
         return {
@@ -200,8 +399,8 @@ class MechanismRecord:
             "mechanism_id": self.mechanism_id,
             "version": self.version,
             "kind": self.kind.value,
-            "status": self.status.value,
-            "representation_artifact_id": self.representation_artifact_id,
+            "epistemic_status": self.epistemic_status.value,
+            "representation_artifact": self.representation_artifact,
             "scope": {
                 "context_ids": list(self.scope.context_ids),
                 "regime_ids": list(self.scope.regime_ids),
@@ -211,21 +410,25 @@ class MechanismRecord:
                     self.scope.required_assumptions
                 ),
             },
-            "transfer": self.transfer.value,
-            "parameter_bindings": [
+            "transfer_status": self.transfer_status.value,
+            "parameters": [
                 [name, value]
-                for name, value in self.parameter_bindings
+                for name, value in self.parameters
             ],
-            "supporting_evidence_ids": list(self.supporting_evidence_ids),
-            "contradicting_evidence_ids": list(
-                self.contradicting_evidence_ids
+            "supporting_evidence": list(
+                self.supporting_evidence
             ),
-            "provenance_artifact_ids": list(self.provenance_artifact_ids),
+            "contradicting_evidence": list(
+                self.contradicting_evidence
+            ),
+            "provenance": list(self.provenance),
             "relations": [
                 {
                     "kind": relation.kind.value,
-                    "target_mechanism_id": relation.target_mechanism_id,
-                    "target_version": relation.target_version,
+                    "target": {
+                        "mechanism_id": relation.target.mechanism_id,
+                        "version": relation.target.version,
+                    },
                 }
                 for relation in self.relations
             ],
@@ -234,55 +437,99 @@ class MechanismRecord:
     @classmethod
     def from_wire(cls, value: dict) -> "MechanismRecord":
         if value.get("schema") != "ecsa.mechanism-record.v1":
-            raise ValueError("unsupported mechanism record schema")
+            raise ValueError(
+                "unsupported mechanism record schema"
+            )
         scope = value["scope"]
+
+        epistemic_status = value.get(
+            "epistemic_status",
+            value.get("status"),
+        )
+        representation = value.get(
+            "representation_artifact",
+            value.get("representation_artifact_id"),
+        )
+        transfer_status = value.get(
+            "transfer_status",
+            value.get("transfer"),
+        )
+        parameters = value.get(
+            "parameters",
+            value.get("parameter_bindings", ()),
+        )
+        supporting = value.get(
+            "supporting_evidence",
+            value.get("supporting_evidence_ids", ()),
+        )
+        contradicting = value.get(
+            "contradicting_evidence",
+            value.get("contradicting_evidence_ids", ()),
+        )
+        provenance = value.get(
+            "provenance",
+            value.get("provenance_artifact_ids", ()),
+        )
+
+        relations = []
+        for item in value["relations"]:
+            target = item.get("target")
+            if target is None:
+                target = {
+                    "mechanism_id": item["target_mechanism_id"],
+                    "version": item["target_version"],
+                }
+            relations.append(
+                MechanismRelation(
+                    MechanismRelationKind(item["kind"]),
+                    MechanismVersionRef(
+                        target["mechanism_id"],
+                        int(target["version"]),
+                    ),
+                )
+            )
+
         return cls(
             mechanism_id=value["mechanism_id"],
             version=int(value["version"]),
             kind=MechanismKind(value["kind"]),
-            status=MechanismStatus(value["status"]),
-            representation_artifact_id=value["representation_artifact_id"],
+            epistemic_status=EpistemicStatus(
+                epistemic_status
+            ),
+            representation_artifact=representation,
             scope=MechanismScope(
                 context_ids=tuple(scope["context_ids"]),
-                regime_ids=tuple(scope["regime_ids"]),
-                domain_ids=tuple(scope["domain_ids"]),
-                task_ids=tuple(scope["task_ids"]),
+                regime_ids=tuple(scope.get("regime_ids", ())),
+                domain_ids=tuple(scope.get("domain_ids", ())),
+                task_ids=tuple(scope.get("task_ids", ())),
                 required_assumptions=tuple(
                     scope["required_assumptions"]
                 ),
             ),
-            transfer=MechanismTransferStatus(value["transfer"]),
-            parameter_bindings=tuple(
+            transfer_status=TransferStatus(
+                transfer_status
+            ),
+            parameters=tuple(
                 (item[0], item[1])
-                for item in value.get("parameter_bindings", ())
+                for item in parameters
             ),
-            supporting_evidence_ids=tuple(
-                value["supporting_evidence_ids"]
-            ),
-            contradicting_evidence_ids=tuple(
-                value["contradicting_evidence_ids"]
-            ),
-            provenance_artifact_ids=tuple(
-                value["provenance_artifact_ids"]
-            ),
-            relations=tuple(
-                MechanismRelation(
-                    MechanismRelationKind(item["kind"]),
-                    item["target_mechanism_id"],
-                    int(item["target_version"]),
-                )
-                for item in value["relations"]
-            ),
+            supporting_evidence=tuple(supporting),
+            contradicting_evidence=tuple(contradicting),
+            provenance=tuple(provenance),
+            relations=tuple(relations),
         )
 
 
 @dataclass(frozen=True)
 class MechanismLineage:
+    mechanism: MechanismVersionRef
     record: MechanismRecord
     representation_artifact_id: str
     supporting_evidence_ids: tuple[str, ...]
     contradicting_evidence_ids: tuple[str, ...]
     provenance_artifact_ids: tuple[str, ...]
+    relations: tuple[MechanismRelation, ...]
+    related_mechanisms: tuple[MechanismVersionRef, ...]
     execution_kind: str
     prior_version: tuple[str, int] | None = None
 
@@ -293,7 +540,7 @@ class MechanismRepository(Protocol):
 
     def get(
         self,
-        mechanism_id: str,
+        mechanism: MechanismVersionRef | str,
         version: int | None = None,
     ) -> MechanismRecord | None: ...
 
@@ -304,6 +551,6 @@ class MechanismRepository(Protocol):
 
     def lineage(
         self,
-        mechanism_id: str,
+        mechanism: MechanismVersionRef | str,
         version: int | None = None,
     ) -> MechanismLineage | None: ...
