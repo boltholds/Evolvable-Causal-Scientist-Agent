@@ -203,6 +203,7 @@ class ReactorValidationEvent:
     predicted_frequency: float
     validation_step: int
     success: bool
+    observed_frequency: float | None = None
 
     def __post_init__(self) -> None:
         if not self.event_id or not self.hypothesis_id:
@@ -211,6 +212,11 @@ class ReactorValidationEvent:
             raise ValueError("validation step must be nonnegative")
         if type(self.success) is not bool:
             raise ValueError("validation success must be bool")
+        if (
+            self.observed_frequency is not None
+            and not isfinite(self.observed_frequency)
+        ):
+            raise ValueError("observed_frequency must be finite when present")
 
 
 
