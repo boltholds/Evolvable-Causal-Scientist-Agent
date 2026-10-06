@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import argparse
+import importlib
 import json
 from hashlib import sha256
 from pathlib import Path
@@ -214,7 +216,7 @@ def run_episode(
 
 
 
-def _policy_config_hash(config: dict) -> str:
+def policy_config_hash(config: dict) -> str:
     encoded = json.dumps(
         config,
         sort_keys=True,
@@ -239,7 +241,7 @@ def run_progressive_transfer(
 
     root = Path(output_dir)
     root.mkdir(parents=True, exist_ok=True)
-    config_hash = _policy_config_hash(policy_config)
+    config_hash = policy_config_hash(policy_config)
 
     reuse_repo = MLMDMechanismRepository.sqlite(
         root / "reuse-mechanisms.sqlite"
@@ -261,12 +263,8 @@ def run_progressive_transfer(
             max_steps=max_steps,
         )
 
-        cold_policy = policy_factory(dict(policy_config))
-        reuse_policy = policy_factory(dict(policy_config))
-        if not isinstance(cold_policy, DiscoveryWorldActionPolicy) or not isinstance(
-            reuse_policy, DiscoveryWorldActionPolicy
-        ):
-            raise TypeError("policy factory must return DiscoveryWorldActionPolicy")
+        cold_policy = _create_policy(policy_factory, policy_config)
+        reuse_policy = _create_policy(policy_factory, policy_config)
 
         cold_episode = episode_runner(
             config=episode_config,
@@ -312,3 +310,113 @@ def run_progressive_transfer(
         pairs=tuple(pairs),
         policy_config_hash=config_hash,
     )
+
+
+
+def load_policy_factory(
+    path: str,
+) -> Callable[[dict], DiscoveryWorldActionPolicy]:
+    if not isinstance(path, str) or path.count(":") != 1:
+        raise ValueError("policy factory must use module:factory syntax")
+    module_name, attribute = path.split(":", 1)
+    if not module_name or not attribute:
+        raise ValueError("policy factory must use module:factory syntax")
+    try:
+        module = importlib.import_module(module_name)
+    except ImportError as exc:
+        raise ValueError(f"cannot import policy module: {module_name}") from exc
+    if not hasattr(module, attribute):
+        raise ValueError(f"policy factory not found: {path}")
+    factory = getattr(module, attribute)
+    if not callable(factory):
+        raise TypeError(f"policy factory is not callable: {path}")
+    return factory
+
+
+def _create_policy(
+    factory: Callable[[dict], DiscoveryWorldActionPolicy],
+    config: dict,
+) -> DiscoveryWorldActionPolicy:
+    policy = factory(dict(config))
+    if not isinstance(policy, DiscoveryWorldActionPolicy):
+        raise TypeError("policy factory must return DiscoveryWorldActionPolicy")
+    return policy
+
+
+def _parse_seeds(value: str) -> tuple[int, ...]:
+    try:
+        seeds = tuple(int(item.strip()) for item in value.split(",") if item.strip())
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("seeds must be comma-separated integers") from exc
+    if not seeds:
+        raise argparse.ArgumentTypeError("at least one seed is required")
+    return seeds
+
+
+def _summary_wire(result: TransferArenaResult) -> dict:
+    return {
+        "policy_config_hash": result.policy_config_hash,
+        "pairs": [
+            {
+                "seed": pair.seed,
+                "cold": {
+                    "completed_successfully": pair.cold.episode.evaluation.completed_successfully,
+                    "score_normalized": pair.cold.episode.evaluation.score_normalized,
+                    "steps": pair.cold.episode.evaluation.steps,
+                    "starting_mechanism_count": pair.cold.starting_mechanism_count,
+                    "ending_mechanism_count": pair.cold.ending_mechanism_count,
+                },
+                "reuse": {
+                    "completed_successfully": pair.reuse.episode.evaluation.completed_successfully,
+                    "score_normalized": pair.reuse.episode.evaluation.score_normalized,
+                    "steps": pair.reuse.episode.evaluation.steps,
+                    "starting_mechanism_count": pair.reuse.starting_mechanism_count,
+                    "ending_mechanism_count": pair.reuse.ending_mechanism_count,
+                },
+            }
+            for pair in result.pairs
+        ],
+    }
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Run the ECSA DiscoveryWorld Reactor Lab transfer arena."
+    )
+    parser.add_argument("--scenario", default="Reactor Lab")
+    parser.add_argument("--difficulty", default="Normal")
+    parser.add_argument("--seeds", type=_parse_seeds, default=(0, 1, 2, 3, 4))
+    parser.add_argument("--arms", default="cold,reuse")
+    parser.add_argument("--max-steps", type=int, default=1000)
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--policy-factory", required=True)
+    parser.add_argument("--policy-config", type=Path, required=True)
+    args = parser.parse_args(argv)
+
+    if args.scenario != "Reactor Lab" or args.difficulty != "Normal":
+        parser.error("first arena supports only Reactor Lab / Normal")
+    if args.arms != "cold,reuse":
+        parser.error("first arena requires --arms cold,reuse")
+    if args.max_steps < 1:
+        parser.error("--max-steps must be positive")
+
+    config_value = json.loads(args.policy_config.read_text())
+    if not isinstance(config_value, dict):
+        parser.error("--policy-config must contain a JSON object")
+    factory = load_policy_factory(args.policy_factory)
+    result = run_progressive_transfer(
+        seeds=args.seeds,
+        policy_factory=factory,
+        policy_config=config_value,
+        output_dir=args.output,
+        max_steps=args.max_steps,
+    )
+    args.output.mkdir(parents=True, exist_ok=True)
+    (args.output / "summary.json").write_text(
+        json.dumps(_summary_wire(result), sort_keys=True, indent=2) + "\n"
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
