@@ -31,7 +31,7 @@ The system separates three concerns:
 2. **Causal semantics** — what a concrete model predicts observationally, under intervention, and counterfactually.
 3. **Specialized discovery and planning engines** — finite-state learning, program synthesis, abstraction learning, regime detection, diagnosis, causal-structure discovery, uncertainty-aware planning, and neural dynamics.
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the architecture contract and [docs/INTEGRATION_PLAN.md](docs/INTEGRATION_PLAN.md) for the staged implementation plan.
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the architecture contract, [docs/INTEGRATION_PLAN.md](docs/INTEGRATION_PLAN.md) for the staged implementation plan, and [docs/MECHANISM_LIBRARY.md](docs/MECHANISM_LIBRARY.md) for the reusable-mechanism schema, admission, applicability, and persistence boundary.
 
 ## Current executable milestone
 
@@ -69,6 +69,8 @@ The executable path in `main` now includes:
 - cross-context mechanism partitioning with the official `Vario_Pi_search` path and VARIO's own conservative invariance correction for the fully invariant case;
 - an explicit ECSA transfer-scope projection from VARIO partitions: one context group → `SHARED`, multiple groups with reuse → `CONTEXT_SPECIALIZED`, all singleton groups → `SPLIT`;
 - content-addressed VARIO transfer artifacts binding the Stitch abstraction, context evidence hashes, official source checksum, learned partition, MDL score, and ECSA scope;
+- a fixed **Mechanism Library v1 architecture contract**: ECSA owns mechanism identity/version, kind, epistemic status, scope, assumptions, evidence, relations, admission, and applicability semantics, while persistence/lineage are delegated behind a `MechanismRepository` protocol;
+- **ML Metadata (MLMD)** is the selected first persistence/lineage backend for the repository adapter; `MLMDMechanismRepository` is planned but not implemented yet;
 - end-to-end tests using real BCS models, a real Java/LearnLib TTT learner, the external BOCPD implementation, the pinned DreamCoder core, the real Rust Stitch compressor, and the official VARIO R implementation.
 
 The TTT integration does **not** vendor the BCS TTT implementation. The adapter checks out the pinned BCS source revision, invokes its existing bridge, and records the learned machine as an ECSA artifact.
