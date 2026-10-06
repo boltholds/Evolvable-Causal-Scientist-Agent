@@ -46,11 +46,17 @@ The executable path in `main` now includes:
 - `TheorySpaceExpansionRequest` and multi-engine repair fan-out with provenance;
 - a real **LearnLib TTT** repair backend that reuses the existing BCS bridge at the pinned BCS revision;
 - content-addressed persistence of the accepted Mealy hypothesis;
+- TTT residual-state projection into a typed state-augmentation candidate;
+- an aliasing qualification gate: the same causal-state key must map to distinct minimal TTT residual states before the state feature is admitted;
+- coherent admission of a qualified projected theory with explicit small prior mass;
+- deterministic TTT predictions for supported frozen interventions in the same `ExperimentSpec` / `PredictiveDistribution` space used by BCS theories, allowing the projected theory to participate in IDS;
 - end-to-end tests using real BCS models and a real Java/LearnLib TTT learner.
 
 The TTT integration does **not** vendor the BCS TTT implementation. The adapter checks out the pinned BCS source revision, invokes its existing bridge, and records the learned machine as an ECSA artifact.
 
-A TTT machine is currently emitted as a `TheoryProposal` with `STATE_MEMORY` provenance. It is intentionally **not auto-admitted into the causal posterior yet**: admission requires a prediction adapter that can score the proposal against the same experiment/evidence space as the active causal theories. This prevents a behavioral automaton from being treated as a causal model merely because it was learned successfully.
+A TTT machine is emitted as a `TheoryProposal` with `STATE_MEMORY` provenance. It is still **not auto-admitted merely because it was learned successfully**. The state projection must first produce an aliasing witness showing that the current causal-state key collapses behaviorally distinct minimal residual states. A qualified projection becomes a state-augmented `TheoryRef`, receives explicit small prior mass, and can make deterministic predictions for interventions represented in the frozen TTT alphabet.
+
+The current qualification test deliberately uses a coarse synthetic causal-state key to verify this bridge. It does not yet claim that a real BCS state representation is insufficient on the frozen fixture; that scientific claim requires a separate arena experiment.
 
 Run the full tests:
 
