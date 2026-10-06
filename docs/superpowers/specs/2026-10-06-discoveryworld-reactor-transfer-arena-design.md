@@ -100,7 +100,7 @@ Responsibilities:
 - expose `listKnownActions(limited=False)`;
 - expose teleport locations;
 - execute one JSON action with `performAgentAction(0, action)`;
-- call exactly one `tick()` after every accepted action attempt;
+- call exactly one `tick()` after every call to `performAgentAction()`, including actions that DiscoveryWorld reports as failed or invalid;
 - expose terminal state via `areTasksComplete()`;
 - expose step count via `getStepCounter()`.
 
@@ -228,10 +228,28 @@ behavior.
 
 For the first implementation, successful activation of the target crystal
 reactor at a previously predicted frequency is the decisive prospective
-validation event.
+validation event. Validation is detected only from the next agent-visible
+observation (for example, the public reactor name/state becoming
+`crystal reactor (activated)`) after the action and tick. The sidecar must
+not inspect the hidden `isActivated` or crystal `resonanceFreq` attributes.
 
 The source run stores the resulting representation as an ECSA
-`SYMBOLIC_RULE` mechanism artifact, with:
+`SYMBOLIC_RULE` mechanism artifact. The benchmark context ID is canonical:
+
+```text
+discoveryworld:reactor-lab:normal:seed-<N>
+```
+
+The mechanism record uses:
+
+```text
+domain_id = discoveryworld
+task_id   = reactor-lab
+regime_id = normal
+context   = the exact seed context above
+```
+
+and carries:
 
 - exact structured rule;
 - source measurement evidence;
@@ -259,8 +277,9 @@ find_transfer_candidates(context)
 Semantics:
 
 - only `ADMITTED` non-deprecated mechanisms;
-- domain/task/regime/assumptions must be compatible;
-- current context membership is not required;
+- domain/task/regime/assumptions must be explicitly present in the query and
+  compatible with the stored scope;
+- current context membership is deliberately ignored for candidate retrieval;
 - results are labelled transfer candidates, never directly executable facts;
 - candidates retain their validated source scope and provenance.
 
@@ -461,7 +480,7 @@ It does run real DiscoveryWorld:
 1. pin/import the official repository;
 2. load `Reactor Lab / Normal / seed 0`;
 3. obtain a real observation;
-4. verify one action → one tick semantics;
+4. verify every `performAgentAction()` call, successful or not, is followed by exactly one tick;
 5. verify oracle information is absent from the policy-facing observation;
 6. test parsing of real public instrument result messages;
 7. test transfer-candidate retrieval does not make the candidate applicable;
@@ -480,11 +499,15 @@ python -m ecsa.benchmarks.discoveryworld.arena \
   --arms cold,reuse \
   --max-steps 1000 \
   --output <dir> \
-  --policy <configured-policy>
+  --policy-factory package.module:create_policy \
+  --policy-config policy.json
 ```
 
-The exact policy plugin/config mechanism is selected in the implementation
-plan; it must be identical between arms.
+The arena loads the policy through a Python import string in
+`module:factory` form. The factory receives the parsed JSON config and
+returns a `DiscoveryWorldActionPolicy`. The same factory path and the same
+config-file content hash must be used in both arms. Provider/model-specific
+code therefore stays outside the benchmark core.
 
 ## 13. Approaches considered
 
