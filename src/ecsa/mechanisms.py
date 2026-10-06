@@ -549,6 +549,11 @@ class MechanismRepository(Protocol):
         context: ApplicabilityContext,
     ) -> tuple[MechanismRecord, ...]: ...
 
+    def find_transfer_candidates(
+        self,
+        context: ApplicabilityContext,
+    ) -> tuple[MechanismRecord, ...]: ...
+
     def lineage(
         self,
         mechanism: MechanismVersionRef | str,
