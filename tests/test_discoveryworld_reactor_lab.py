@@ -85,10 +85,22 @@ def observation(
     *,
     message: str = "",
     reactor_name: str = "crystal reactor (uncalibrated)",
+    reactor_frequency: float | None = None,
 ) -> dict:
+    dialog_box = {}
+    if reactor_frequency is not None:
+        dialog_box = {
+            "dialogIn": (
+                "Hello, I am Crystal Reactor #3.\n"
+                f"The current resonance frequence is: {reactor_frequency} Hertz.\n"
+                "The allowable range is 0 to 10,000 Hz."
+            ),
+            "dialogOptions": {},
+        }
     return {
         "ui": {
             "lastActionMessage": message,
+            "dialog_box": dialog_box,
             "inventoryObjects": [
                 {"uuid": 101, "name": "densitometer", "description": "densitometer"}
             ],
@@ -184,6 +196,29 @@ def test_frozen_prediction_validates_only_on_new_public_activation() -> None:
     assert event.validation_step == 8
 
 
+
+
+
+
+def test_activation_at_different_public_frequency_rejects_prediction() -> None:
+    sidecar = ReactorLabScientificSidecar()
+    sidecar.freeze_hypothesis(hypothesis())
+
+    events = sidecar.observe_validation(
+        step=8,
+        pre_observation=observation(
+            reactor_name="crystal reactor (uncalibrated)",
+            reactor_frequency=1300.0,
+        ),
+        post_observation=observation(
+            reactor_name="crystal reactor (activated)",
+            reactor_frequency=1500.0,
+        ),
+    )
+
+    assert len(events) == 1
+    assert events[0].predicted_frequency == 1324.0
+    assert events[0].success is False
 
 
 def test_new_public_uncalibrated_state_is_failed_prospective_validation() -> None:
