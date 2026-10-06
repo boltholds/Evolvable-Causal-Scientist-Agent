@@ -1,0 +1,306 @@
+import json
+from pathlib import Path
+
+from ecsa.adapters.mlmd import MLMDMechanismRepository
+from ecsa.benchmarks.discoveryworld.contracts import (
+    DiscoveryWorldActionResult,
+    DiscoveryWorldEpisodeConfig,
+    DiscoveryWorldEvaluation,
+    PolicyDecision,
+)
+from ecsa.benchmarks.discoveryworld.reactor_lab import (
+    MeasurementKind,
+    ReactorFrequencyPrediction,
+    ReactorMechanismHypothesis,
+    reactor_context,
+)
+from ecsa.benchmarks.discoveryworld import arena as arena_module
+from ecsa.benchmarks.discoveryworld.arena import run_episode
+from ecsa.mechanisms import (
+    EpistemicStatus,
+    MechanismKind,
+    MechanismRecord,
+    MechanismScope,
+    TransferStatus,
+)
+
+
+def observation(
+    reactor_name: str = "crystal reactor (uncalibrated)",
+) -> dict:
+    return {
+        "ui": {
+            "taskProgress": [
+                {
+                    "description": "Tune the reactors",
+                    "completed": False,
+                }
+            ],
+            "lastActionMessage": "",
+            "inventoryObjects": [],
+            "accessibleEnvironmentObjects": [
+                {
+                    "uuid": 404,
+                    "name": reactor_name,
+                    "description": reactor_name,
+                }
+            ],
+            "nearbyObjects": {"objects": {}},
+        }
+    }
+
+
+class FakeEnvironment:
+    def __init__(
+        self,
+        events: list[str],
+        *,
+        activate_after_action: bool = False,
+        finish_after_action: bool = True,
+    ) -> None:
+        self.events = events
+        self._steps = 0
+        self.activated = False
+        self.activate_after_action = activate_after_action
+        self.finish_after_action = finish_after_action
+
+    def observe(self) -> dict:
+        self.events.append("observe")
+        return observation(
+            "crystal reactor (activated)"
+            if self.activated
+            else "crystal reactor (uncalibrated)"
+        )
+
+    def available_actions(self) -> dict:
+        self.events.append("available_actions")
+        return {"PICKUP": {"args": ["arg1"]}}
+
+    def teleport_locations(self) -> dict:
+        self.events.append("teleport_locations")
+        return {"lab": [1, 1]}
+
+    def act(self, action: dict) -> DiscoveryWorldActionResult:
+        self.events.append("act")
+        self._steps += 1
+        if self.activate_after_action:
+            self.activated = True
+        return DiscoveryWorldActionResult(True, ())
+
+    @property
+    def steps(self) -> int:
+        return self._steps
+
+    @property
+    def done(self) -> bool:
+        return self.finish_after_action and self._steps >= 1
+
+    def evaluate_after_run(self) -> DiscoveryWorldEvaluation:
+        self.events.append("evaluate")
+        return DiscoveryWorldEvaluation(
+            completed_successfully=self.done,
+            score_normalized=1.0 if self.done else 0.0,
+            steps=self._steps,
+            scorecard=[
+                {
+                    "completedSuccessfully": self.done,
+                    "scoreNormalized": 1.0 if self.done else 0.0,
+                    "criticalQuestions": ["ORACLE"],
+                }
+            ],
+        )
+
+
+class RecordingPolicy:
+    def __init__(
+        self,
+        events: list[str],
+        *,
+        hypothesis: ReactorMechanismHypothesis | None = None,
+    ) -> None:
+        self.events = events
+        self.contexts = []
+        self.observations = []
+        self.hypothesis = hypothesis
+
+    def decide(
+        self,
+        observation,
+        available_actions,
+        teleport_locations,
+        scientific_context,
+    ) -> PolicyDecision:
+        self.events.append("decide")
+        self.observations.append(observation)
+        self.contexts.append(scientific_context)
+        hypotheses = (
+            (self.hypothesis,)
+            if self.hypothesis is not None
+            else ()
+        )
+        return PolicyDecision(
+            action={"action": "PICKUP", "arg1": 404},
+            hypotheses=hypotheses,
+        )
+
+
+def patch_environment(monkeypatch, fake: FakeEnvironment) -> None:
+    monkeypatch.setattr(
+        arena_module.DiscoveryWorldEnvironmentAdapter,
+        "reactor_lab_normal",
+        classmethod(lambda cls, seed, max_steps=1000, thread_id=0: fake),
+    )
+
+
+def config(seed: int = 0, max_steps: int = 10) -> DiscoveryWorldEpisodeConfig:
+    return DiscoveryWorldEpisodeConfig(
+        scenario="Reactor Lab",
+        difficulty="Normal",
+        seed=seed,
+        max_steps=max_steps,
+    )
+
+
+def source_mechanism() -> MechanismRecord:
+    source = reactor_context(0)
+    return MechanismRecord(
+        mechanism_id="source-law",
+        version=1,
+        kind=MechanismKind.SYMBOLIC_RULE,
+        epistemic_status=EpistemicStatus.ADMITTED,
+        representation_artifact="reactor-rule:sha256:" + "a" * 64,
+        scope=MechanismScope(
+            context_ids=(source.context_id,),
+            regime_ids=(source.regime_id,),
+            domain_ids=(source.domain_id,),
+            task_ids=(source.task_id,),
+            required_assumptions=source.assumptions,
+        ),
+        transfer_status=TransferStatus.CONTEXT_SPECIALIZED,
+    )
+
+
+def test_episode_loop_keeps_oracle_outside_policy_surface(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    events: list[str] = []
+    fake = FakeEnvironment(events)
+    patch_environment(monkeypatch, fake)
+    policy = RecordingPolicy(events)
+    repository = MLMDMechanismRepository.sqlite(
+        tmp_path / "mechanisms.sqlite"
+    )
+
+    result = run_episode(
+        config=config(),
+        policy=policy,
+        repository=repository,
+        output_dir=tmp_path / "run",
+    )
+
+    assert result.evaluation.completed_successfully is True
+    assert events == [
+        "observe",
+        "available_actions",
+        "teleport_locations",
+        "decide",
+        "act",
+        "observe",
+        "evaluate",
+    ]
+    assert "criticalQuestions" not in json.dumps(policy.observations)
+    assert policy.contexts[0].context_id == (
+        "discoveryworld:reactor-lab:normal:seed-0"
+    )
+
+    names = {
+        "run.json",
+        "actions.jsonl",
+        "observations.jsonl",
+        "scientific_events.jsonl",
+        "mechanism_events.jsonl",
+        "metrics.json",
+        "final_scorecard.json",
+    }
+    assert names.issubset(
+        {path.name for path in (tmp_path / "run").iterdir()}
+    )
+    scorecard = json.loads(
+        (tmp_path / "run" / "final_scorecard.json").read_text()
+    )
+    assert scorecard[0]["criticalQuestions"] == ["ORACLE"]
+    observations_log = (
+        tmp_path / "run" / "observations.jsonl"
+    ).read_text()
+    assert "criticalQuestions" not in observations_log
+
+
+def test_validated_transfer_is_admitted_as_target_specialization(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    events: list[str] = []
+    fake = FakeEnvironment(events, activate_after_action=True)
+    patch_environment(monkeypatch, fake)
+    repository = MLMDMechanismRepository.sqlite(
+        tmp_path / "mechanisms.sqlite"
+    )
+    source = source_mechanism()
+    repository.admit(source)
+    hypothesis = ReactorMechanismHypothesis(
+        hypothesis_id="reuse-density-law",
+        measurement_kind=MeasurementKind.DENSITY,
+        slope=100.0,
+        offset=90.0,
+        source_evidence_ids=("source-evidence",),
+        predictions=(
+            ReactorFrequencyPrediction(
+                target_crystal_uuid=202,
+                target_reactor_uuid=404,
+                predicted_frequency=1324.0,
+                frozen_step=0,
+            ),
+        ),
+        source_mechanism=source.ref,
+    )
+    policy = RecordingPolicy(events, hypothesis=hypothesis)
+
+    result = run_episode(
+        config=config(seed=1),
+        policy=policy,
+        repository=repository,
+        output_dir=tmp_path / "run",
+    )
+
+    assert policy.contexts[0].transfer_candidates == (source,)
+    assert len(result.admitted_mechanisms) == 1
+    [target] = result.admitted_mechanisms
+    assert target.scope.context_ids == (
+        "discoveryworld:reactor-lab:normal:seed-1",
+    )
+    assert target.relations[0].target == source.ref
+    assert repository.find_applicable(reactor_context(1)) == (target,)
+
+
+def test_episode_stops_at_max_steps_when_environment_is_not_done(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    events: list[str] = []
+    fake = FakeEnvironment(events, finish_after_action=False)
+    patch_environment(monkeypatch, fake)
+    policy = RecordingPolicy(events)
+    repository = MLMDMechanismRepository.sqlite(
+        tmp_path / "mechanisms.sqlite"
+    )
+
+    result = run_episode(
+        config=config(max_steps=2),
+        policy=policy,
+        repository=repository,
+        output_dir=tmp_path / "run",
+    )
+
+    assert result.evaluation.steps == 2
+    assert len(policy.contexts) == 2
