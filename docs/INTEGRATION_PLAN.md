@@ -245,13 +245,55 @@ library.
 
 ### VARIO
 
+**Status: integrated with the official authors' R source archive.**
+
 Evaluate whether a proposed abstraction should be:
 
 - shared unchanged;
 - shared with context-specific parameters;
 - split into context-specific mechanisms.
 
-A compressed abstraction remains provisional until transfer/intervention evidence supports it.
+The adapter uses the official August 2022 VARIO source archive from the
+authors' project page and pins the exact archive bytes by SHA-256
+`67df25a256622f86fe7c7b469e2928ddcd2252680b18502699786041ca554652`.
+The archive is not copied into ECSA. It is downloaded into a runtime cache,
+checksum-verified, and executed through R.
+
+The current transfer adapter targets VARIO's `Vario_Pi_search` API for one
+known mechanism input and target across multiple numeric contexts. Each
+context is supplied as `VarioContextEvidence` and converted to the official
+`x1, y` data convention. The first integration uses degree-1 regression;
+this is a bounded acceptance surface, not a claim that arbitrary Stitch
+lambda programs have been reduced to linear regressions.
+
+For changing mechanisms the adapter consumes VARIO's MDL-ranked partition.
+For the fully invariant case it respects VARIO's own
+`invariant_conservative` result and `Pi_ranking_correctone` rather than
+overriding that correction with the raw MDL ranking.
+
+ECSA then projects the resulting VARIO partition into its own transfer
+vocabulary:
+
+- one context group → `SHARED`;
+- more than one group with at least one multi-context group →
+  `CONTEXT_SPECIALIZED`;
+- every context in a singleton group → `SPLIT`.
+
+This three-way vocabulary is an ECSA integration contract, not terminology
+attributed to VARIO itself.
+
+The content-addressed transfer artifact records the Stitch abstraction ID,
+context IDs and evidence hashes, discovered VARIO partition and score, source
+URL/checksum, and the resulting ECSA scope. The official source archive
+contains no `LICENSE` file, so the artifact explicitly records unknown
+source licensing and ECSA does not vendor or relicense that source.
+
+Acceptance tests exercise the real R implementation on three cases:
+fully invariant contexts, a two-context shared mechanism plus one changed
+context, and three distinct context mechanisms.
+
+A compressed abstraction remains provisional until this transfer evidence
+supports its scope.
 
 Acceptance:
 
