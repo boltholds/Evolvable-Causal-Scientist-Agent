@@ -1,4 +1,6 @@
 import json
+
+import pytest
 from pathlib import Path
 
 from ecsa.adapters.mlmd import MLMDMechanismRepository
@@ -16,6 +18,7 @@ from ecsa.benchmarks.discoveryworld.reactor_lab import (
 )
 from ecsa.benchmarks.discoveryworld import arena as arena_module
 from ecsa.benchmarks.discoveryworld.arena import run_episode, run_progressive_transfer
+from ecsa.benchmarks.discoveryworld.metrics import ReactorRunMetricsAccumulator, compute_transfer_gain
 from ecsa.mechanisms import (
     EpistemicStatus,
     MechanismKind,
@@ -367,3 +370,35 @@ def test_progressive_transfer_has_no_future_seed_leakage(
         pair.cold.policy_config_hash == pair.reuse.policy_config_hash
         for pair in result.pairs
     )
+
+
+
+def test_transfer_gain_and_measurement_accounting() -> None:
+    assert compute_transfer_gain(cold=10, reuse=4) == pytest.approx(0.6)
+    assert compute_transfer_gain(cold=0, reuse=0) is None
+
+    metrics = ReactorRunMetricsAccumulator()
+    metrics.record_measurement(instrument_uuid=10, crystal_uuid=20)
+    metrics.record_measurement(instrument_uuid=10, crystal_uuid=20)
+    metrics.record_measurement(instrument_uuid=11, crystal_uuid=20)
+
+    snapshot = metrics.snapshot()
+    assert snapshot.measurement_actions == 3
+    assert snapshot.distinct_measurements == 2
+
+
+def test_transfer_candidate_outcomes_are_separate_counters() -> None:
+    metrics = ReactorRunMetricsAccumulator()
+    metrics.record_candidate_retrieved("m1@1")
+    metrics.record_candidate_retrieved("m2@1")
+    metrics.record_candidate_tested("m1@1")
+    metrics.record_candidate_accepted("m1@1")
+    metrics.record_candidate_tested("m2@1")
+    metrics.record_candidate_rejected("m2@1", false_transfer=True)
+
+    snapshot = metrics.snapshot()
+    assert snapshot.transfer_candidates_retrieved == 2
+    assert snapshot.transfer_candidates_tested == 2
+    assert snapshot.transfer_candidates_accepted == 1
+    assert snapshot.transfer_candidates_rejected == 1
+    assert snapshot.false_transfer_events == 1
