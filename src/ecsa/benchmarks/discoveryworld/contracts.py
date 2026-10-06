@@ -230,3 +230,32 @@ class ArenaEpisodeResult:
     evaluation: DiscoveryWorldEvaluation
     admitted_mechanisms: tuple[MechanismRecord, ...]
     measurement_count: int
+
+
+
+class ArenaArm(StrEnum):
+    COLD = "cold"
+    REUSE = "reuse"
+
+
+@dataclass(frozen=True)
+class ArmEpisodeResult:
+    arm: ArenaArm
+    seed: int
+    episode: ArenaEpisodeResult
+    starting_mechanism_count: int
+    ending_mechanism_count: int
+    policy_config_hash: str
+
+
+@dataclass(frozen=True)
+class PairedSeedResult:
+    seed: int
+    cold: ArmEpisodeResult
+    reuse: ArmEpisodeResult
+
+
+@dataclass(frozen=True)
+class TransferArenaResult:
+    pairs: tuple[PairedSeedResult, ...]
+    policy_config_hash: str
