@@ -180,8 +180,25 @@ A negative-control DSL containing only `and` yields no proposal rather than
 inventing unsupported behavior.
 
 Synthesized programs are proposals, not automatically accepted causal laws.
-They must later receive a prediction/causal projection and compete against
-existing theories through prospective evidence before admission.
+
+**Program projection and admission are now integrated for the Boolean domain.**
+A `DreamCoderProgramPredictionAdapter` evaluates the stored program through
+the same pinned DreamCoder `Program.parse/evaluate` runtime and maps explicit
+Boolean `ExperimentSpec` interventions to `PredictiveDistribution`.
+
+A `ProgramMechanismProjector` requires at least one held-out prospective
+observation whose experiment ID is absent from the synthesis examples. If the
+program gives the observed held-out outcome probability 1 under the current
+deterministic Boolean adapter, it becomes a content-addressed
+`program-mechanism` `TheoryRef`. It can then be admitted with explicit small
+prior mass and participate in the same information-directed experiment
+selection as BCS theories. A held-out mismatch produces
+`RejectedProgramMechanism` and no posterior admission.
+
+The current vertical slice synthesizes `Y = M and not C` from three Boolean
+examples and reserves the fourth truth-table case for prospective validation.
+After admission, IDS prefers an intervention where the qualified program and a
+zero-output BCS theory disagree.
 
 Each engine returns proposals with provenance; it does not directly overwrite the current theory population.
 
