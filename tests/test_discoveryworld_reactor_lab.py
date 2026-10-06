@@ -183,7 +183,8 @@ def test_frozen_prediction_validates_only_on_new_public_activation() -> None:
             reactor_name="crystal reactor (uncalibrated)"
         ),
         post_observation=observation(
-            reactor_name="crystal reactor (activated)"
+            reactor_name="crystal reactor (activated)",
+            reactor_frequency=1324.0,
         ),
     )
 
@@ -193,6 +194,7 @@ def test_frozen_prediction_validates_only_on_new_public_activation() -> None:
     assert event.target_reactor_uuid == 404
     assert event.predicted_frequency == 1324.0
     assert event.success is True
+    assert event.observed_frequency == 1324.0
     assert event.validation_step == 8
 
 
@@ -250,7 +252,8 @@ def test_already_activated_reactor_is_not_retrospective_validation() -> None:
             reactor_name="crystal reactor (activated)"
         ),
         post_observation=observation(
-            reactor_name="crystal reactor (activated)"
+            reactor_name="crystal reactor (activated)",
+            reactor_frequency=1324.0,
         ),
     )
     assert events == ()
@@ -267,7 +270,8 @@ def test_build_admitted_rule_preserves_scope_and_transfer_lineage(
         step=8,
         pre_observation=observation(),
         post_observation=observation(
-            reactor_name="crystal reactor (activated)"
+            reactor_name="crystal reactor (activated)",
+            reactor_frequency=1324.0,
         ),
     )
     store = ReactorRuleArtifactStore(tmp_path)
@@ -294,3 +298,4 @@ def test_build_admitted_rule_preserves_scope_and_transfer_lineage(
     assert artifact["schema"] == "ecsa.discoveryworld-reactor-rule.v1"
     assert artifact["measurement_kind"] == "density"
     assert artifact["validation"]["target_reactor_uuid"] == 404
+    assert artifact["validation"]["observed_frequency"] == 1324.0
