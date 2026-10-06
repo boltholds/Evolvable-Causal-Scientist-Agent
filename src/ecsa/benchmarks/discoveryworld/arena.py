@@ -3,6 +3,8 @@ from __future__ import annotations
 import argparse
 import importlib
 import json
+import subprocess
+from datetime import datetime, timezone
 from hashlib import sha256
 from pathlib import Path
 from collections.abc import Callable
@@ -22,7 +24,10 @@ from .contracts import (
     ScientificContext,
     TransferArenaResult,
 )
-from .environment import DiscoveryWorldEnvironmentAdapter
+from .environment import (
+    DISCOVERYWORLD_REVISION,
+    DiscoveryWorldEnvironmentAdapter,
+)
 from .reactor_lab import (
     ReactorLabScientificSidecar,
     ReactorRuleArtifactStore,
@@ -31,6 +36,25 @@ from .reactor_lab import (
 )
 from .runlog import ArenaRunWriter
 from .metrics import ReactorRunMetricsAccumulator, summarize_transfer
+
+
+def _ecsa_revision() -> str:
+    try:
+        process = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return "unknown"
+    revision = process.stdout.strip()
+    return revision if len(revision) == 40 else "unknown"
+
+
+def _timestamp_utc() -> str:
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def run_episode(
@@ -61,6 +85,12 @@ def run_episode(
             "seed": config.seed,
             "max_steps": config.max_steps,
             "context_id": context.context_id,
+            "ecsa_revision": _ecsa_revision(),
+            "discoveryworld_revision": DISCOVERYWORLD_REVISION,
+            "mechanism_repository": type(repository).__name__,
+            "timestamp_utc": _timestamp_utc(),
+            "arm": None,
+            "policy_config_hash": None,
         },
     )
 
@@ -245,6 +275,25 @@ def policy_config_hash(config: dict) -> str:
     return sha256(encoded).hexdigest()
 
 
+def _augment_run_metadata(
+    output_dir: Path,
+    *,
+    arm: ArenaArm,
+    config_hash: str,
+) -> None:
+    path = Path(output_dir) / "run.json"
+    if not path.exists():
+        return
+    value = json.loads(path.read_text())
+    if not isinstance(value, dict):
+        raise RuntimeError("run.json must contain an object")
+    value["arm"] = arm.value
+    value["policy_config_hash"] = config_hash
+    path.write_text(
+        json.dumps(value, sort_keys=True, indent=2) + "\n"
+    )
+
+
 def run_progressive_transfer(
     *,
     seeds: tuple[int, ...],
@@ -292,6 +341,11 @@ def run_progressive_transfer(
             repository=cold_repo,
             output_dir=cold_dir,
         )
+        _augment_run_metadata(
+            cold_dir,
+            arm=ArenaArm.COLD,
+            config_hash=config_hash,
+        )
         cold_admitted = len(cold_episode.admitted_mechanisms)
         cold_result = ArmEpisodeResult(
             arm=ArenaArm.COLD,
@@ -308,6 +362,11 @@ def run_progressive_transfer(
             policy=reuse_policy,
             repository=reuse_repo,
             output_dir=reuse_dir,
+        )
+        _augment_run_metadata(
+            reuse_dir,
+            arm=ArenaArm.REUSE,
+            config_hash=config_hash,
         )
         reuse_count += len(reuse_episode.admitted_mechanisms)
         reuse_result = ArmEpisodeResult(
