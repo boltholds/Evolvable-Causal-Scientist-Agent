@@ -153,6 +153,32 @@ def _instrument_measurement_kind(name: str) -> MeasurementKind | None:
     return None
 
 
+def measurement_action_key(
+    observation: dict[str, JSONValue],
+    action: ActionPacket,
+) -> tuple[int, int] | None:
+    if action.get("action") != "USE":
+        return None
+    instrument_uuid = action.get("arg1")
+    crystal_uuid = action.get("arg2")
+    if type(instrument_uuid) is not int or type(crystal_uuid) is not int:
+        return None
+    public = _public_objects(observation)
+    instrument = public.get(instrument_uuid)
+    crystal = public.get(crystal_uuid)
+    if instrument is None or crystal is None:
+        return None
+    instrument_name = instrument.get("name")
+    crystal_name = crystal.get("name")
+    if not isinstance(instrument_name, str) or not isinstance(crystal_name, str):
+        return None
+    if _instrument_measurement_kind(instrument_name) is None:
+        return None
+    if "quantum crystal" not in crystal_name.lower():
+        return None
+    return instrument_uuid, crystal_uuid
+
+
 class ReactorLabScientificSidecar:
     def __init__(self) -> None:
         self._measurements: list[ReactorMeasurement] = []
