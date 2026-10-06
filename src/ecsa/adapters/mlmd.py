@@ -4,6 +4,7 @@ import json
 from dataclasses import replace
 from pathlib import Path
 
+from ml_metadata import errors as mlmd_errors
 from ml_metadata.metadata_store import metadata_store
 from ml_metadata.proto import metadata_store_pb2
 
@@ -460,9 +461,12 @@ class MLMDMechanismRepository(MechanismRepository):
         self,
         external_id: str,
     ):
-        existing = self._store.get_artifacts_by_external_ids(
-            [external_id]
-        )
+        try:
+            existing = self._store.get_artifacts_by_external_ids(
+                [external_id]
+            )
+        except mlmd_errors.NotFoundError:
+            existing = []
         external = [
             artifact
             for artifact in existing
@@ -494,11 +498,15 @@ class MLMDMechanismRepository(MechanismRepository):
             mechanism_id,
             version,
         )
-        matches = [
-            artifact
-            for artifact in self._store.get_artifacts_by_external_ids(
+        try:
+            by_external_id = self._store.get_artifacts_by_external_ids(
                 [external_id]
             )
+        except mlmd_errors.NotFoundError:
+            by_external_id = []
+        matches = [
+            artifact
+            for artifact in by_external_id
             if artifact.type_id == self._mechanism_type_id
         ]
         if not matches:
