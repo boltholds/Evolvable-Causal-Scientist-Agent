@@ -50,12 +50,15 @@ def _primitive(name):
     raise ValueError(f"unsupported boolean primitive: {name}")
 
 
-def main() -> None:
+def _register_primitives(names):
+    return [_primitive(name) for name in names]
+
+
+def _synthesize(payload) -> dict:
     from dreamcoder.grammar import Grammar
     from dreamcoder.task import Task
     from dreamcoder.type import Context, arrow, tbool
 
-    payload = json.load(sys.stdin)
     arity = int(payload["arity"])
     primitive_names = tuple(payload["primitives"])
     examples = payload["examples"]
@@ -73,7 +76,7 @@ def main() -> None:
             for example in examples
         ],
     )
-    grammar = Grammar.uniform([_primitive(name) for name in primitive_names])
+    grammar = Grammar.uniform(_register_primitives(primitive_names))
 
     enumerated = 0
     lower = 0.0
@@ -122,6 +125,32 @@ def main() -> None:
     }
     if best is not None:
         result.update(best)
+    return result
+
+
+def _evaluate(payload) -> dict:
+    from dreamcoder.program import Program
+
+    primitive_names = tuple(payload["primitives"])
+    _register_primitives(primitive_names)
+    program = Program.parse(payload["program"])
+    value = program.evaluate([])
+    for argument in payload["inputs"]:
+        value = value(bool(argument))
+    if type(value) is not bool:
+        raise TypeError(f"DreamCoder program returned non-bool value: {value!r}")
+    return {"status": "ok", "output": value}
+
+
+def main() -> None:
+    payload = json.load(sys.stdin)
+    mode = payload.get("mode", "synthesize")
+    if mode == "synthesize":
+        result = _synthesize(payload)
+    elif mode == "evaluate":
+        result = _evaluate(payload)
+    else:
+        raise ValueError(f"unsupported worker mode: {mode}")
     json.dump(result, sys.stdout, sort_keys=True)
 
 
