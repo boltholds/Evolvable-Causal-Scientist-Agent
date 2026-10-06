@@ -8,6 +8,7 @@ from .contracts import (
     DiscoveryWorldEpisodeConfig,
     DiscoveryWorldEvaluation,
     JSONValue,
+    validate_action_packet,
 )
 
 DISCOVERYWORLD_REPOSITORY = "https://github.com/allenai/discoveryworld.git"
@@ -90,10 +91,7 @@ class DiscoveryWorldEnvironmentAdapter:
     def act(self, action: ActionPacket) -> DiscoveryWorldActionResult:
         if self._steps >= self.config.max_steps:
             raise RuntimeError("DiscoveryWorld episode step budget exhausted")
-        if not isinstance(action, dict) or not isinstance(
-            action.get("action"), str
-        ):
-            raise ValueError("action packet requires a string 'action' field")
+        validate_action_packet(action)
 
         response = None
         try:
