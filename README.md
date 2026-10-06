@@ -53,7 +53,11 @@ The executable path in `main` now includes:
 - a real **BOCPD** regime-change repair backend, pinned to `fiannai/bocd`, operating on population predictive discrepancy rather than raw observations;
 - confirmation gating for regime changes: a run-length reset must be followed by a nontrivial new segment, so a single terminal anomaly does not automatically become a regime-change theory;
 - content-addressed BOCPD diagnostic artifacts containing the signal, MAP run-length trace, reset step, and detector parameters;
-- end-to-end tests using real BCS models, a real Java/LearnLib TTT learner, and the external BOCPD implementation.
+- a real **DreamCoder** program-repair backend, pinned to `ellisk42/ec`, using DreamCoder's own `Grammar`, `Program`, `Task`, type system, and `Grammar.enumeration()` core;
+- an isolated DreamCoder worker that bypasses only the legacy eager package initializer, avoiding its unrelated historical domain dependencies while preserving the original enumerator;
+- a first explicit Boolean mechanism domain adapter with provenance-bearing examples and a bounded DSL;
+- content-addressed DreamCoder program artifacts carrying the synthesized program, MDL/log prior, DSL, examples, enumeration count, and pinned source revision;
+- end-to-end tests using real BCS models, a real Java/LearnLib TTT learner, the external BOCPD implementation, and the pinned DreamCoder core.
 
 The TTT integration does **not** vendor the BCS TTT implementation. The adapter checks out the pinned BCS source revision, invokes its existing bridge, and records the learned machine as an ECSA artifact.
 
@@ -64,7 +68,7 @@ The current qualification test deliberately uses a coarse synthetic causal-state
 Run the full tests:
 
 ```bash
-python -m pip install -e '.[test,bcs,bocpd]'
+python -m pip install -e '.[test,bcs,bocpd,dreamcoder]'
 pytest -q
 ```
 
@@ -74,7 +78,9 @@ Run the minimal causal example:
 python examples/first_vertical_slice.py
 ```
 
-TTT and BOCPD are now integrated as distinct repair paths: TTT proposes missing state/memory structure, while BOCPD proposes temporal regime change. They can both be invoked from the same `TheorySpaceExpansionRequest` and compete with future repair engines rather than excluding one another.
+TTT, BOCPD, and DreamCoder are now integrated as distinct repair paths: TTT proposes missing state/memory structure, BOCPD proposes temporal regime change, and DreamCoder proposes executable program mechanisms when the current mechanism form is insufficient. They can all be invoked from the same `TheorySpaceExpansionRequest` and return provenance-bearing proposals without overwriting the active theory population.
+
+The current DreamCoder integration intentionally starts with one Boolean-domain adapter. It proves the generic repair boundary and real DreamCoder execution, but it does not claim a universal DSL or automatic causal admission for arbitrary synthesized programs.
 
 The project still does **not** claim that the remaining external engines are integrated or interchangeable. Each one will be connected behind an explicit adapter and validated experimentally.
 
