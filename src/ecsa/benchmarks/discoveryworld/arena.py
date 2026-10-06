@@ -320,9 +320,12 @@ def run_progressive_transfer(
     root.mkdir(parents=True, exist_ok=True)
     config_hash = policy_config_hash(policy_config)
 
-    reuse_repo = MLMDMechanismRepository.sqlite(
-        root / "reuse-mechanisms.sqlite"
-    )
+    reuse_db = root / "reuse-mechanisms.sqlite"
+    if reuse_db.exists():
+        raise FileExistsError(
+            f"reuse repository already exists: {reuse_db}"
+        )
+    reuse_repo = MLMDMechanismRepository.sqlite(reuse_db)
     reuse_count = 0
     pairs: list[PairedSeedResult] = []
 
@@ -330,9 +333,12 @@ def run_progressive_transfer(
         seed_dir = root / f"seed-{seed}"
         cold_dir = seed_dir / "cold"
         reuse_dir = seed_dir / "reuse"
-        cold_repo = MLMDMechanismRepository.sqlite(
-            seed_dir / "cold-mechanisms.sqlite"
-        )
+        cold_db = seed_dir / "cold-mechanisms.sqlite"
+        if cold_db.exists():
+            raise FileExistsError(
+                f"cold repository already exists: {cold_db}"
+            )
+        cold_repo = MLMDMechanismRepository.sqlite(cold_db)
         episode_config = DiscoveryWorldEpisodeConfig(
             scenario="Reactor Lab",
             difficulty="Normal",
