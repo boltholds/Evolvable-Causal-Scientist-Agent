@@ -138,6 +138,28 @@ def _public_name(
     return name if isinstance(name, str) else None
 
 
+def _public_reactor_frequency(
+    observation: dict[str, JSONValue],
+) -> float | None:
+    ui = observation.get("ui")
+    if not isinstance(ui, dict):
+        return None
+    dialog = ui.get("dialog_box")
+    if not isinstance(dialog, dict):
+        return None
+    dialog_in = dialog.get("dialogIn")
+    if not isinstance(dialog_in, str):
+        return None
+    match = re.search(
+        rf"current resonance frequenc(?:e|y) is:\\s*{_NUMBER}\\s*Hertz",
+        dialog_in,
+        flags=re.IGNORECASE,
+    )
+    if match is None:
+        return None
+    return float(match.group(1))
+
+
 def _instrument_measurement_kind(name: str) -> MeasurementKind | None:
     lowered = name.lower()
     if "densitometer" in lowered:
@@ -303,8 +325,19 @@ class ReactorLabScientificSidecar:
                     continue
                 if "(activated)" in before.lower():
                     continue
+                observed_frequency = _public_reactor_frequency(
+                    post_observation
+                )
                 if "(activated)" in after.lower():
-                    success = True
+                    if observed_frequency is None:
+                        continue
+                    success = (
+                        abs(
+                            observed_frequency
+                            - prediction.predicted_frequency
+                        )
+                        < 2.0
+                    )
                 elif "(uncalibrated)" in after.lower():
                     success = False
                 else:
@@ -320,6 +353,7 @@ class ReactorLabScientificSidecar:
                     predicted_frequency=prediction.predicted_frequency,
                     validation_step=step,
                     success=success,
+                    observed_frequency=observed_frequency,
                 )
                 self._validated.add(key)
                 events.append(event)
@@ -344,6 +378,7 @@ def _validation_to_wire(validation: ReactorValidationEvent) -> dict:
         "predicted_frequency": validation.predicted_frequency,
         "validation_step": validation.validation_step,
         "success": validation.success,
+        "observed_frequency": validation.observed_frequency,
     }
 
 
