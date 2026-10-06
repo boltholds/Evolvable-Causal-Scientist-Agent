@@ -295,6 +295,100 @@ context, and three distinct context mechanisms.
 A compressed abstraction remains provisional until this transfer evidence
 supports its scope.
 
+### Mechanism Library admission and applicability
+
+**Status: architecture contract fixed; persistence implementation not yet written.**
+
+The authoritative schema and repository boundary are defined in
+[MECHANISM_LIBRARY.md](MECHANISM_LIBRARY.md).
+
+ECSA owns only:
+
+- the typed mechanism schema;
+- epistemic status;
+- scope/assumptions;
+- admission semantics;
+- applicability semantics;
+- scientific relations;
+- projections into execution backends.
+
+ECSA does **not** implement a second general-purpose artifact store, lineage
+database, or model registry.
+
+The persistence boundary is:
+
+```python
+class MechanismRepository(Protocol):
+    def admit(...): ...
+    def get(...): ...
+    def find_applicable(...): ...
+    def lineage(...): ...
+```
+
+The first planned implementation is `MLMDMechanismRepository`, using ML
+Metadata for artifacts, executions, events, contexts, and lineage while
+keeping MLMD protobuf/runtime types outside the ECSA core domain.
+
+Initial mechanism kinds:
+
+- `PROGRAM`;
+- `CAUSAL_MODEL`;
+- `STATE_FEATURE`;
+- `SYMBOLIC_RULE`.
+
+Initial epistemic statuses:
+
+- `CANDIDATE`;
+- `QUALIFIED`;
+- `ADMITTED`;
+- `DEPRECATED`.
+
+Initial transfer statuses:
+
+- `SHARED`;
+- `CONTEXT_SPECIALIZED`;
+- `SPLIT`.
+
+Admission is scientific rather than merely persistent. A representation is
+not admitted because it exists in DreamCoder, Stitch, TTT, or BCS.
+
+Minimum admission rules include:
+
+- synthesis/training evidence must remain distinct from prospective validation;
+- DreamCoder programs require prospective qualification;
+- Stitch compression does not establish causal validity or transfer;
+- global/cross-context reuse requires explicit transfer evidence;
+- TTT state features require an aliasing witness;
+- contradicting evidence is retained and may narrow scope, create a
+  specialization/new version, supersede, or deprecate a mechanism.
+
+Applicability queries are conservative:
+
+- only `ADMITTED` mechanisms are returned by ordinary reuse queries;
+- all explicit scope and assumption constraints must match;
+- `SPLIT` mechanisms are never returned as globally shared;
+- deprecated mechanisms remain available for lineage but not normal runtime
+  reuse;
+- unknown transfer into a new context triggers validation rather than
+  optimistic reuse.
+
+Runtime backends consume filtered projections. DreamCoder Grammar, a BCS model
+set, or planner operators are therefore **views of applicable mechanisms**,
+not the long-term source of truth.
+
+First implementation acceptance:
+
+1. persist an admitted mechanism plus exact evidence/provenance lineage;
+2. retrieve by stable identity/version;
+3. query by context/regime/assumptions;
+4. preserve specialization/supersession without mutating prior history;
+5. exclude deprecated records from normal applicability while preserving
+   lineage;
+6. trace an admitted mechanism through DreamCoder/Stitch/VARIO or TTT/BCS
+   artifacts;
+7. project applicable program mechanisms into DreamCoder without making its
+   Grammar authoritative.
+
 Acceptance:
 
 The same mechanism discovered in multiple contexts is reused with fewer new experiments than learning from scratch, while a deliberately changed context triggers correct specialization rather than false reuse.
