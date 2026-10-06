@@ -91,11 +91,19 @@ Connect specialized engines behind proposal interfaces. They are complementary r
 
 ### TTT / mut-learn
 
+**Status: LearnLib TTT backend integrated for the frozen BCS deterministic fixtures.**
+
 Use for resettable deterministic finite-state regions:
 
 - behavioral state discovery;
 - memory requirements;
 - counterexamples.
+
+The current adapter reuses the existing BCS TTT bridge at the pinned BCS
+revision, executes the real Java/LearnLib learner, and returns a
+content-addressed `TheoryProposal` in the `STATE_MEMORY` repair family.
+The learned Mealy machine is not automatically inserted into the causal
+posterior until a compatible prediction/evidence projection exists.
 
 ### MMAE / IMM
 
