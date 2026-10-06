@@ -1,16 +1,24 @@
 from __future__ import annotations
 
+import json
+from hashlib import sha256
 from pathlib import Path
+from collections.abc import Callable
 
+from ecsa.adapters.mlmd import MLMDMechanismRepository
 from ecsa.mechanisms import MechanismRecord, MechanismRepository
 
 from .contracts import (
+    ArenaArm,
     ArenaEpisodeResult,
+    ArmEpisodeResult,
     DiscoveryWorldActionPolicy,
     DiscoveryWorldEpisodeConfig,
+    PairedSeedResult,
     PolicyDecision,
     ReactorMechanismHypothesis,
     ScientificContext,
+    TransferArenaResult,
 )
 from .environment import DiscoveryWorldEnvironmentAdapter
 from .reactor_lab import (
@@ -164,4 +172,105 @@ def run_episode(
         evaluation=evaluation,
         admitted_mechanisms=tuple(admitted_this_run),
         measurement_count=len(sidecar.measurements),
+    )
+
+
+
+def _policy_config_hash(config: dict) -> str:
+    encoded = json.dumps(
+        config,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode()
+    return sha256(encoded).hexdigest()
+
+
+def run_progressive_transfer(
+    *,
+    seeds: tuple[int, ...],
+    policy_factory: Callable[[dict], DiscoveryWorldActionPolicy],
+    policy_config: dict,
+    output_dir: Path,
+    max_steps: int = 1000,
+    episode_runner=run_episode,
+) -> TransferArenaResult:
+    if seeds != tuple(sorted(seeds)) or not seeds:
+        raise ValueError("seeds must be a nonempty ascending tuple")
+    if any(type(seed) is not int or seed not in range(5) for seed in seeds):
+        raise ValueError("first DiscoveryWorld arena supports official seeds 0..4")
+
+    root = Path(output_dir)
+    root.mkdir(parents=True, exist_ok=True)
+    config_hash = _policy_config_hash(policy_config)
+
+    reuse_repo = MLMDMechanismRepository.sqlite(
+        root / "reuse-mechanisms.sqlite"
+    )
+    reuse_count = 0
+    pairs: list[PairedSeedResult] = []
+
+    for seed in seeds:
+        seed_dir = root / f"seed-{seed}"
+        cold_dir = seed_dir / "cold"
+        reuse_dir = seed_dir / "reuse"
+        cold_repo = MLMDMechanismRepository.sqlite(
+            seed_dir / "cold-mechanisms.sqlite"
+        )
+        episode_config = DiscoveryWorldEpisodeConfig(
+            scenario="Reactor Lab",
+            difficulty="Normal",
+            seed=seed,
+            max_steps=max_steps,
+        )
+
+        cold_policy = policy_factory(dict(policy_config))
+        reuse_policy = policy_factory(dict(policy_config))
+        if not isinstance(cold_policy, DiscoveryWorldActionPolicy) or not isinstance(
+            reuse_policy, DiscoveryWorldActionPolicy
+        ):
+            raise TypeError("policy factory must return DiscoveryWorldActionPolicy")
+
+        cold_episode = episode_runner(
+            config=episode_config,
+            policy=cold_policy,
+            repository=cold_repo,
+            output_dir=cold_dir,
+        )
+        cold_admitted = len(cold_episode.admitted_mechanisms)
+        cold_result = ArmEpisodeResult(
+            arm=ArenaArm.COLD,
+            seed=seed,
+            episode=cold_episode,
+            starting_mechanism_count=0,
+            ending_mechanism_count=cold_admitted,
+            policy_config_hash=config_hash,
+        )
+
+        reuse_start = reuse_count
+        reuse_episode = episode_runner(
+            config=episode_config,
+            policy=reuse_policy,
+            repository=reuse_repo,
+            output_dir=reuse_dir,
+        )
+        reuse_count += len(reuse_episode.admitted_mechanisms)
+        reuse_result = ArmEpisodeResult(
+            arm=ArenaArm.REUSE,
+            seed=seed,
+            episode=reuse_episode,
+            starting_mechanism_count=reuse_start,
+            ending_mechanism_count=reuse_count,
+            policy_config_hash=config_hash,
+        )
+        pairs.append(
+            PairedSeedResult(
+                seed=seed,
+                cold=cold_result,
+                reuse=reuse_result,
+            )
+        )
+
+    return TransferArenaResult(
+        pairs=tuple(pairs),
+        policy_config_hash=config_hash,
     )
