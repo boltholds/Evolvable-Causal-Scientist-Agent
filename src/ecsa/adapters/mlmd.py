@@ -271,7 +271,7 @@ class MLMDMechanismRepository(MechanismRepository):
         deprecated = replace(
             previous,
             version=previous.version + 1,
-            status=MechanismStatus.DEPRECATED,
+            epistemic_status=MechanismStatus.DEPRECATED,
         )
         return self._persist(
             deprecated,
