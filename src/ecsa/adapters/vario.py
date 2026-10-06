@@ -387,7 +387,16 @@ class VarioTransferValidator:
               c(x_degree),
               config
             )
-            best <- result$Pi_ranking[[1]]
+            ranking <- result$Pi_ranking
+            ranking_kind <- "mdl"
+            if (
+              isTRUE(result$invariant_conservative) &&
+              length(result$Pi_ranking_correctone) > 0
+            ) {
+              ranking <- result$Pi_ranking_correctone
+              ranking_kind <- "invariance-corrected"
+            }
+            best <- ranking[[1]]
             if (!is.null(best$Pi_history)) {
               partition <- best$Pi_history$E_part
               score <- best$score_sum
