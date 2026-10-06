@@ -79,9 +79,9 @@ The executable path in `main` now includes:
 - a pinned **DiscoveryWorld** backend at `allenai/discoveryworld@fd591323920be0d3786ef350955de1945aa571e5`, with a strict Reactor Lab / Normal environment adapter and one-action/one-tick semantics;
 - an explicit DiscoveryWorld oracle firewall: normal observations/actions/teleports are policy-facing, while scorecards, critical questions/hypotheses, hidden world state, and exported history are evaluator-only;
 - a Reactor Lab scientific sidecar that parses only public instrument-result text, freezes linear mechanism hypotheses prospectively, and qualifies symbolic mechanisms only from subsequent public reactor activation;
-- conservative `find_transfer_candidates()`: an admitted mechanism from another seed can guide validation but does not become applicable in the target seed until target-context evidence succeeds;
+- conservative `find_transfer_candidates()`: only out-of-scope, non-`SPLIT`, admitted mechanisms with compatible regime/domain/task/assumptions can guide validation; mechanisms already applicable in the current context remain facts rather than transfer candidates;
 - progressive cold-vs-reuse orchestration over official Reactor Lab Normal seeds 0→4, with cold repositories reset per seed and one persistent reuse repository;
-- provider-neutral policy loading via `module:factory`, per-run JSON/JSONL logs, transfer/measurement counters, false-transfer accounting, and deterministic configuration hashing;
+- provider-neutral policy loading via `module:factory`, per-run JSON/JSONL logs, transfer/measurement counters, and deterministic configuration hashing; policies distinguish merely stated hypotheses from explicit `validation_hypothesis_ids`, so a false transfer is counted only after a source-backed hypothesis is deliberately committed to a prospective test and fails;
 - a real no-LLM CI smoke runs both arms for all official seeds for one environment interaction each; this verifies benchmark wiring and information isolation, **not** transfer sample-efficiency. The 1000-step model-backed arena remains the experiment that must establish or reject that scientific claim;
 - end-to-end tests using real BCS models, a real Java/LearnLib TTT learner, the external BOCPD implementation, the pinned DreamCoder core, the real Rust Stitch compressor, and the official VARIO R implementation.
 
