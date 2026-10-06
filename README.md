@@ -20,6 +20,7 @@ The project is built around **integration of existing research systems rather th
 - **BAMCP / pymdp** — planning and action selection under model uncertainty.
 - **Fast Downward / TheoryCoder-style PDDL projection** — symbolic and hierarchical goal planning.
 - **DreamerV3** — learned latent dynamics and imagined trajectories for environments where exact symbolic rollout is insufficient.
+- **DiscoveryWorld** — pinned external scientific-agent environment for the first real cold-vs-reuse transfer arena.
 
 These components are not being discarded when another component overlaps with them. The architecture assigns each method a specific responsibility and removes duplicated ownership.
 
@@ -75,6 +76,13 @@ The executable path in `main` now includes:
 - `DreamCoderGrammarProjector` resolves applicable qualified program mechanisms back to their exact DreamCoder program artifacts and injects them into the upstream Grammar as real `Invented` productions;
 - typed runtime artifact views preserve separate `CAUSAL_MODEL`, `STATE_FEATURE`, and `SYMBOLIC_RULE` channels without pretending that BCS/planner artifact hydration is already implemented;
 - an end-to-end reuse test requires warm DreamCoder synthesis in a second validated context to enumerate fewer programs than cold-start synthesis, establishing computational reuse without yet claiming reduced environmental experiment count;
+- a pinned **DiscoveryWorld** backend at `allenai/discoveryworld@fd591323920be0d3786ef350955de1945aa571e5`, with a strict Reactor Lab / Normal environment adapter and one-action/one-tick semantics;
+- an explicit DiscoveryWorld oracle firewall: normal observations/actions/teleports are policy-facing, while scorecards, critical questions/hypotheses, hidden world state, and exported history are evaluator-only;
+- a Reactor Lab scientific sidecar that parses only public instrument-result text, freezes linear mechanism hypotheses prospectively, and qualifies symbolic mechanisms only from subsequent public reactor activation;
+- conservative `find_transfer_candidates()`: an admitted mechanism from another seed can guide validation but does not become applicable in the target seed until target-context evidence succeeds;
+- progressive cold-vs-reuse orchestration over official Reactor Lab Normal seeds 0→4, with cold repositories reset per seed and one persistent reuse repository;
+- provider-neutral policy loading via `module:factory`, per-run JSON/JSONL logs, transfer/measurement counters, false-transfer accounting, and deterministic configuration hashing;
+- a real no-LLM CI smoke runs both arms for all official seeds for one environment interaction each; this verifies benchmark wiring and information isolation, **not** transfer sample-efficiency. The 1000-step model-backed arena remains the experiment that must establish or reject that scientific claim;
 - end-to-end tests using real BCS models, a real Java/LearnLib TTT learner, the external BOCPD implementation, the pinned DreamCoder core, the real Rust Stitch compressor, and the official VARIO R implementation.
 
 The TTT integration does **not** vendor the BCS TTT implementation. The adapter checks out the pinned BCS source revision, invokes its existing bridge, and records the learned machine as an ECSA artifact.
@@ -86,7 +94,7 @@ The current qualification test deliberately uses a coarse synthetic causal-state
 Run the full tests:
 
 ```bash
-python -m pip install -e '.[test,bcs,bocpd,dreamcoder,mlmd]'
+python -m pip install -e '.[test,bcs,bocpd,dreamcoder,mlmd,discoveryworld]'
 # VARIO tests additionally require R and the R packages:
 # rlist, combinat, dplyr, car
 pytest -q
@@ -97,6 +105,23 @@ Run the minimal causal example:
 ```bash
 python examples/first_vertical_slice.py
 ```
+
+Run the DiscoveryWorld Reactor transfer arena with a configured policy:
+
+```bash
+python -m ecsa.benchmarks.discoveryworld.arena \
+  --scenario "Reactor Lab" \
+  --difficulty Normal \
+  --seeds 0,1,2,3,4 \
+  --arms cold,reuse \
+  --max-steps 1000 \
+  --output output/discoveryworld-reactor \
+  --policy-factory package.module:create_policy \
+  --policy-config policy.json
+```
+
+The policy factory receives the JSON config and must return a `DiscoveryWorldActionPolicy`. Cold and reuse arms use the same factory/config hash; only persistent mechanism memory differs.
+
 
 TTT, BOCPD, and DreamCoder are now integrated as distinct repair paths: TTT proposes missing state/memory structure, BOCPD proposes temporal regime change, and DreamCoder proposes executable program mechanisms when the current mechanism form is insufficient. They can all be invoked from the same `TheorySpaceExpansionRequest` and return provenance-bearing proposals without overwriting the active theory population.
 
