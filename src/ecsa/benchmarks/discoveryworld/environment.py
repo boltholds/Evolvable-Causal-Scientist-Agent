@@ -10,6 +10,10 @@ from .contracts import (
     JSONValue,
 )
 
+DISCOVERYWORLD_REPOSITORY = "https://github.com/allenai/discoveryworld.git"
+DISCOVERYWORLD_REVISION = "fd591323920be0d3786ef350955de1945aa571e5"
+
+
 try:
     from discoveryworld.DiscoveryWorldAPI import DiscoveryWorldAPI
 except ImportError as exc:  # pragma: no cover
