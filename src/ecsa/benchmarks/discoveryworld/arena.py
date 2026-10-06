@@ -159,6 +159,22 @@ def run_episode(
         )
         for validation in validations:
             hypothesis = frozen[validation.hypothesis_id]
+            writer.append_jsonl(
+                "scientific_events.jsonl",
+                {"kind": "validation", "validation": validation},
+            )
+            if not validation.success:
+                if hypothesis.source_mechanism is not None:
+                    ref = (
+                        f"{hypothesis.source_mechanism.mechanism_id}@"
+                        f"{hypothesis.source_mechanism.version}"
+                    )
+                    run_metrics.record_candidate_rejected(
+                        ref,
+                        false_transfer=True,
+                    )
+                continue
+
             mechanism = build_admitted_reactor_mechanism(
                 hypothesis=hypothesis,
                 validation=validation,
@@ -174,10 +190,6 @@ def run_episode(
                 )
                 run_metrics.record_candidate_accepted(ref)
                 accepted_transfer_refs.add(ref)
-            writer.append_jsonl(
-                "scientific_events.jsonl",
-                {"kind": "validation", "validation": validation},
-            )
             writer.append_jsonl(
                 "mechanism_events.jsonl",
                 {"kind": "admitted", "mechanism": mechanism},
