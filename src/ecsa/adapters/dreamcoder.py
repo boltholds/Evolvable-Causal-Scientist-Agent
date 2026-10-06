@@ -7,7 +7,17 @@ import sys
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
+from typing import TypeAlias
 
+from ecsa.contracts import (
+    ExperimentKind,
+    ExperimentSpec,
+    Observation,
+    PredictionStatus,
+    PredictionUnavailable,
+    PredictiveDistribution,
+    TheoryRef,
+)
 from ecsa.repair import (
     RepairFamily,
     TheoryProposal,
@@ -182,6 +192,30 @@ class DreamCoderRepairEngine:
             raise ValueError("DreamCoder artifact digest mismatch")
         return artifact
 
+    def evaluate_program(
+        self,
+        artifact_id: str,
+        inputs: tuple[bool, ...],
+    ) -> bool:
+        artifact = self.load_artifact(artifact_id)
+        if len(inputs) != artifact["arity"]:
+            raise ValueError("program input arity mismatch")
+        if not all(type(value) is bool for value in inputs):
+            raise ValueError("DreamCoder program inputs must be bool")
+        payload = {
+            "mode": "evaluate",
+            "primitives": artifact["primitives"],
+            "program": artifact["program"],
+            "inputs": list(inputs),
+        }
+        result = self._invoke_worker(
+            payload,
+            timeout_seconds=self.evaluation_timeout + 5.0,
+        )
+        if result.get("status") != "ok" or type(result.get("output")) is not bool:
+            raise RuntimeError(f"unexpected DreamCoder evaluation result: {result!r}")
+        return result["output"]
+
     def _run_worker(self) -> dict:
         source_root = self._ensure_source()
         payload = {
@@ -207,6 +241,29 @@ class DreamCoderRepairEngine:
             else str(source_root) + os.pathsep + existing_pythonpath
         )
         environment["ECSA_DREAMCODER_SOURCE_ROOT"] = str(source_root)
+        return self._invoke_worker(
+            payload,
+            timeout_seconds=self.timeout_seconds + 5.0,
+            environment=environment,
+        )
+
+    def _invoke_worker(
+        self,
+        payload: dict,
+        *,
+        timeout_seconds: float,
+        environment: dict[str, str] | None = None,
+    ) -> dict:
+        source_root = self._ensure_source()
+        if environment is None:
+            environment = os.environ.copy()
+            existing_pythonpath = environment.get("PYTHONPATH")
+            environment["PYTHONPATH"] = (
+                str(source_root)
+                if not existing_pythonpath
+                else str(source_root) + os.pathsep + existing_pythonpath
+            )
+            environment["ECSA_DREAMCODER_SOURCE_ROOT"] = str(source_root)
         try:
             process = subprocess.run(
                 [
@@ -217,11 +274,11 @@ class DreamCoderRepairEngine:
                 input=json.dumps(payload),
                 text=True,
                 capture_output=True,
-                timeout=self.timeout_seconds + 5.0,
+                timeout=timeout_seconds,
                 env=environment,
             )
         except subprocess.TimeoutExpired as exc:
-            raise RuntimeError("DreamCoder synthesis timed out") from exc
+            raise RuntimeError("DreamCoder worker timed out") from exc
         if process.returncode != 0:
             raise RuntimeError(
                 "DreamCoder worker failed: "
@@ -303,3 +360,278 @@ class DreamCoderRepairEngine:
 
     def _artifact_path(self, digest: str) -> Path:
         return self.cache_root / "dreamcoder" / f"{digest}.json"
+
+
+
+class DreamCoderProgramPredictionAdapter:
+    """Project a synthesized Boolean DreamCoder program into ECSA predictions."""
+
+    def __init__(
+        self,
+        engine: DreamCoderRepairEngine,
+        proposal_or_artifact: TheoryProposal | str,
+        *,
+        input_variables: tuple[str, ...],
+        output_variable: str,
+        theory_id: str | None = None,
+    ) -> None:
+        artifact_id = (
+            proposal_or_artifact.artifact_id
+            if isinstance(proposal_or_artifact, TheoryProposal)
+            else proposal_or_artifact
+        )
+        artifact = engine.load_artifact(artifact_id)
+        if artifact.get("domain") != "boolean":
+            raise ValueError("only Boolean DreamCoder artifacts are supported")
+        if (
+            not isinstance(input_variables, tuple)
+            or not input_variables
+            or len(set(input_variables)) != len(input_variables)
+            or not all(isinstance(name, str) and name for name in input_variables)
+        ):
+            raise ValueError("unique nonempty input variable names are required")
+        if len(input_variables) != artifact["arity"]:
+            raise ValueError("input variable count does not match program arity")
+        if not output_variable:
+            raise ValueError("output_variable is required")
+
+        self.engine = engine
+        self.program_artifact_id = artifact_id
+        self.input_variables = input_variables
+        self.output_variable = output_variable
+        self.theory_id = theory_id
+
+    def predict(
+        self,
+        theory: TheoryRef,
+        experiment: ExperimentSpec,
+    ):
+        if self.theory_id is not None and theory.theory_id != self.theory_id:
+            raise ValueError("theory does not match this program mechanism")
+        if experiment.kind is not ExperimentKind.INTERVENTIONAL:
+            return self._undefined(theory, experiment, "program mechanism supports interventions only")
+        if experiment.outcomes != (self.output_variable,):
+            return self._undefined(
+                theory,
+                experiment,
+                "experiment outcome does not match program mechanism output",
+            )
+        if any(
+            intervention.object_id != experiment.object_id
+            for intervention in experiment.interventions
+        ):
+            return self._undefined(
+                theory,
+                experiment,
+                "program mechanism supports one object-local intervention context",
+            )
+
+        values: dict[str, bool] = {}
+        for intervention in experiment.interventions:
+            if intervention.variable in values:
+                return self._undefined(theory, experiment, "duplicate program input intervention")
+            raw = intervention.value
+            if type(raw) is bool:
+                value = raw
+            elif type(raw) is int and raw in (0, 1):
+                value = bool(raw)
+            else:
+                return self._undefined(
+                    theory,
+                    experiment,
+                    "program mechanism requires Boolean input interventions",
+                )
+            values[intervention.variable] = value
+
+        if set(values) != set(self.input_variables):
+            return self._undefined(
+                theory,
+                experiment,
+                "experiment does not provide exactly the program input variables",
+            )
+
+        output = self.engine.evaluate_program(
+            self.program_artifact_id,
+            tuple(values[name] for name in self.input_variables),
+        )
+        return PredictiveDistribution(
+            theory.theory_id,
+            experiment.experiment_id,
+            (((int(output),), 1.0),),
+        )
+
+    @staticmethod
+    def _undefined(
+        theory: TheoryRef,
+        experiment: ExperimentSpec,
+        reason: str,
+    ) -> PredictionUnavailable:
+        return PredictionUnavailable(
+            theory.theory_id,
+            experiment.experiment_id,
+            PredictionStatus.UNDEFINED,
+            reason,
+        )
+
+
+@dataclass(frozen=True)
+class QualifiedProgramMechanism:
+    theory: TheoryRef
+    source_program_artifact_id: str
+    input_variables: tuple[str, ...]
+    output_variable: str
+    heldout_experiment_ids: tuple[str, ...]
+
+    def prediction_adapter(
+        self,
+        engine: DreamCoderRepairEngine,
+    ) -> DreamCoderProgramPredictionAdapter:
+        return DreamCoderProgramPredictionAdapter(
+            engine,
+            self.source_program_artifact_id,
+            input_variables=self.input_variables,
+            output_variable=self.output_variable,
+            theory_id=self.theory.theory_id,
+        )
+
+
+@dataclass(frozen=True)
+class RejectedProgramMechanism:
+    proposal_id: str
+    reason: str
+
+
+ProgramMechanismQualification: TypeAlias = (
+    QualifiedProgramMechanism | RejectedProgramMechanism
+)
+
+
+class ProgramMechanismProjector:
+    """Qualify a synthesized program on prospective held-out evidence."""
+
+    def __init__(self, engine: DreamCoderRepairEngine) -> None:
+        self.engine = engine
+
+    def qualify(
+        self,
+        proposal: TheoryProposal,
+        *,
+        parent_theory: TheoryRef,
+        input_variables: tuple[str, ...],
+        output_variable: str,
+        heldout: tuple[tuple[ExperimentSpec, Observation], ...],
+    ) -> ProgramMechanismQualification:
+        if proposal.engine_id != self.engine.engine_id:
+            raise ValueError("proposal does not come from this DreamCoder engine")
+        if proposal.family is not RepairFamily.PROGRAM_MECHANISM:
+            raise ValueError("program projection requires PROGRAM_MECHANISM proposal")
+        if parent_theory.theory_id not in proposal.parent_theory_ids:
+            raise ValueError("parent theory is not referenced by the proposal")
+        if not heldout:
+            return RejectedProgramMechanism(
+                proposal.proposal_id,
+                "at least one held-out prospective observation is required",
+            )
+
+        artifact = self.engine.load_artifact(proposal.artifact_id)
+        training_ids = {
+            example["experiment_id"]
+            for example in artifact["examples"]
+        }
+        heldout_ids: list[str] = []
+        provisional = TheoryRef(
+            theory_id=f"candidate:{proposal.proposal_id}",
+            artifact_id=proposal.artifact_id,
+        )
+        adapter = DreamCoderProgramPredictionAdapter(
+            self.engine,
+            proposal,
+            input_variables=input_variables,
+            output_variable=output_variable,
+        )
+
+        validations: list[dict] = []
+        for experiment, observation in heldout:
+            if observation.experiment_id != experiment.experiment_id:
+                raise ValueError("held-out observation/experiment id mismatch")
+            if experiment.experiment_id in training_ids:
+                return RejectedProgramMechanism(
+                    proposal.proposal_id,
+                    "held-out experiment overlaps DreamCoder synthesis evidence",
+                )
+            prediction = adapter.predict(provisional, experiment)
+            if not isinstance(prediction, PredictiveDistribution):
+                return RejectedProgramMechanism(
+                    proposal.proposal_id,
+                    "held-out experiment is outside the program prediction domain",
+                )
+            probability = prediction.probability(observation.outcome)
+            if probability < 1.0:
+                return RejectedProgramMechanism(
+                    proposal.proposal_id,
+                    "program failed held-out prospective validation",
+                )
+            heldout_ids.append(experiment.experiment_id)
+            validations.append(
+                {
+                    "experiment_id": experiment.experiment_id,
+                    "observation": list(observation.outcome),
+                    "predicted_probability": probability,
+                }
+            )
+
+        wire = {
+            "schema": "ecsa.program-mechanism.v1",
+            "parent_theory_id": parent_theory.theory_id,
+            "parent_artifact_id": parent_theory.artifact_id,
+            "source_proposal_id": proposal.proposal_id,
+            "source_program_artifact_id": proposal.artifact_id,
+            "input_variables": list(input_variables),
+            "output_variable": output_variable,
+            "heldout_validations": validations,
+        }
+        digest = _digest(wire)
+        theory = TheoryRef(
+            theory_id=(
+                f"{parent_theory.theory_id}+dreamcoder-program:{digest[:12]}"
+            ),
+            artifact_id=f"program-mechanism:sha256:{digest}",
+        )
+        self._write_projection(digest, wire)
+        return QualifiedProgramMechanism(
+            theory=theory,
+            source_program_artifact_id=proposal.artifact_id,
+            input_variables=input_variables,
+            output_variable=output_variable,
+            heldout_experiment_ids=tuple(heldout_ids),
+        )
+
+    def load_projection_artifact(self, artifact_id: str) -> dict:
+        prefix = "program-mechanism:sha256:"
+        if not artifact_id.startswith(prefix):
+            raise ValueError("invalid program-mechanism artifact id")
+        digest = artifact_id[len(prefix):]
+        path = self._projection_path(digest)
+        if not path.exists():
+            raise FileNotFoundError(f"program-mechanism artifact not found: {artifact_id}")
+        wire = json.loads(path.read_text())
+        if _digest(wire) != digest:
+            raise ValueError("program-mechanism artifact digest mismatch")
+        return wire
+
+    def _write_projection(self, digest: str, wire: dict) -> None:
+        path = self._projection_path(digest)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        serialized = json.dumps(
+            wire,
+            sort_keys=True,
+            separators=(",", ":"),
+        ) + "\n"
+        if path.exists():
+            if path.read_text() != serialized:
+                raise ValueError("conflicting program-mechanism artifact content")
+            return
+        path.write_text(serialized)
+
+    def _projection_path(self, digest: str) -> Path:
+        return self.engine.cache_root / "program-projections" / f"{digest}.json"
