@@ -1,8 +1,23 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
+import types
+
+
+def _install_source_package_stub() -> None:
+    root = os.environ.get("ECSA_DREAMCODER_SOURCE_ROOT")
+    if not root:
+        raise RuntimeError("ECSA_DREAMCODER_SOURCE_ROOT is required")
+    package = types.ModuleType("dreamcoder")
+    package.__path__ = [os.path.join(root, "dreamcoder")]
+    package.__package__ = "dreamcoder"
+    sys.modules["dreamcoder"] = package
+
+
+_install_source_package_stub()
 
 
 def _binary(name, fn):
