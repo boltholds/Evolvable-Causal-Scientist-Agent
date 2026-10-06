@@ -297,7 +297,7 @@ supports its scope.
 
 ### Mechanism Library admission and applicability
 
-**Status: architecture contract fixed; persistence implementation not yet written.**
+**Status: core contract and first MLMD/SQLite repository implementation integrated.**
 
 The authoritative schema and repository boundary are defined in
 [MECHANISM_LIBRARY.md](MECHANISM_LIBRARY.md).
@@ -325,9 +325,10 @@ class MechanismRepository(Protocol):
     def lineage(...): ...
 ```
 
-The first planned implementation is `MLMDMechanismRepository`, using ML
-Metadata for artifacts, executions, events, contexts, and lineage while
-keeping MLMD protobuf/runtime types outside the ECSA core domain.
+The first implementation is `MLMDMechanismRepository`, using ML Metadata
+1.21 for artifacts, executions, events, contexts, and lineage while keeping
+MLMD protobuf/runtime types outside the ECSA core domain. The current
+acceptance backend uses SQLite.
 
 Initial mechanism kinds:
 
@@ -376,18 +377,22 @@ Runtime backends consume filtered projections. DreamCoder Grammar, a BCS model
 set, or planner operators are therefore **views of applicable mechanisms**,
 not the long-term source of truth.
 
-First implementation acceptance:
+Current repository acceptance:
 
-1. persist an admitted mechanism plus exact evidence/provenance lineage;
-2. retrieve by stable identity/version;
-3. query by context/regime/assumptions;
-4. preserve specialization/supersession without mutating prior history;
-5. exclude deprecated records from normal applicability while preserving
-   lineage;
-6. trace an admitted mechanism through DreamCoder/Stitch/VARIO or TTT/BCS
-   artifacts;
-7. project applicable program mechanisms into DreamCoder without making its
-   Grammar authoritative.
+1. admitted mechanisms and exact representation/evidence/provenance inputs are
+   persisted as MLMD artifact/execution/event lineage;
+2. stable identity/version lookup is implemented;
+3. applicability is filtered conservatively by explicit context, regime,
+   domain, task, and required assumptions;
+4. `SUPERSEDES` relations hide superseded mechanisms from ordinary reuse
+   without deleting their historical versions;
+5. deprecation creates a new immutable `DEPRECATED` version and preserves the
+   prior admission lineage;
+6. implicit global scope is rejected;
+7. the core remains isolated from MLMD protobuf/runtime types.
+
+Projection of repository-selected mechanisms back into execution backends is
+the next layer.
 
 Acceptance:
 
