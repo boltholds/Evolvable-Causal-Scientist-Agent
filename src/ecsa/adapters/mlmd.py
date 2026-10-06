@@ -220,9 +220,10 @@ class MLMDMechanismRepository(MechanismRepository):
             )
         ]
 
+        applicable = self.find_applicable(context)
         superseded = {
             relation.target
-            for record in candidates
+            for record in (*candidates, *applicable)
             for relation in record.relations
             if relation.kind is MechanismRelationKind.SUPERSEDES
         }
