@@ -71,6 +71,10 @@ The executable path in `main` now includes:
 - content-addressed VARIO transfer artifacts binding the Stitch abstraction, context evidence hashes, official source checksum, learned partition, MDL score, and ECSA scope;
 - a fixed **Mechanism Library v1 architecture contract**: ECSA owns mechanism identity/version, kind, epistemic status, scope, assumptions, evidence, relations, admission, and applicability semantics, while persistence/lineage are delegated behind a `MechanismRepository` protocol;
 - **ML Metadata (MLMD) 1.21** is the first persistence/lineage backend: `MLMDMechanismRepository` is implemented with SQLite acceptance coverage for admission, version lookup, applicability, exact input lineage, supersession, and immutable deprecation;
+- executable **mechanism runtime projection** is integrated: admitted mechanisms are filtered by current context/regime/domain/task/assumptions before reaching execution backends;
+- `DreamCoderGrammarProjector` resolves applicable qualified program mechanisms back to their exact DreamCoder program artifacts and injects them into the upstream Grammar as real `Invented` productions;
+- typed runtime artifact views preserve separate `CAUSAL_MODEL`, `STATE_FEATURE`, and `SYMBOLIC_RULE` channels without pretending that BCS/planner artifact hydration is already implemented;
+- an end-to-end reuse test requires warm DreamCoder synthesis in a second validated context to enumerate fewer programs than cold-start synthesis, establishing computational reuse without yet claiming reduced environmental experiment count;
 - end-to-end tests using real BCS models, a real Java/LearnLib TTT learner, the external BOCPD implementation, the pinned DreamCoder core, the real Rust Stitch compressor, and the official VARIO R implementation.
 
 The TTT integration does **not** vendor the BCS TTT implementation. The adapter checks out the pinned BCS source revision, invokes its existing bridge, and records the learned machine as an ECSA artifact.
@@ -82,7 +86,7 @@ The current qualification test deliberately uses a coarse synthetic causal-state
 Run the full tests:
 
 ```bash
-python -m pip install -e '.[test,bcs,bocpd,dreamcoder]'
+python -m pip install -e '.[test,bcs,bocpd,dreamcoder,mlmd]'
 # VARIO tests additionally require R and the R packages:
 # rlist, combinat, dplyr, car
 pytest -q
