@@ -28,6 +28,7 @@ from .reactor_lab import (
     reactor_context,
 )
 from .runlog import ArenaRunWriter
+from .metrics import ReactorRunMetricsAccumulator
 
 
 def run_episode(
@@ -63,6 +64,9 @@ def run_episode(
 
     admitted_this_run: list[MechanismRecord] = []
     frozen: dict[str, ReactorMechanismHypothesis] = {}
+    run_metrics = ReactorRunMetricsAccumulator()
+    tested_transfer_refs: set[str] = set()
+    accepted_transfer_refs: set[str] = set()
 
     while not environment.done and environment.steps < config.max_steps:
         pre = environment.observe()
@@ -71,10 +75,15 @@ def run_episode(
             {"step": environment.steps, "phase": "pre", "observation": pre},
         )
 
+        transfer_candidates = repository.find_transfer_candidates(context)
+        for candidate in transfer_candidates:
+            run_metrics.record_candidate_retrieved(
+                f"{candidate.mechanism_id}@{candidate.version}"
+            )
         scientific_context = ScientificContext(
             context_id=context.context_id or "",
             measurements=sidecar.measurements,
-            transfer_candidates=repository.find_transfer_candidates(context),
+            transfer_candidates=transfer_candidates,
             admitted_mechanisms=repository.find_applicable(context),
         )
         decision = policy.decide(
@@ -88,6 +97,13 @@ def run_episode(
 
         for hypothesis in decision.hypotheses:
             previous = frozen.get(hypothesis.hypothesis_id)
+            if hypothesis.source_mechanism is not None:
+                ref = (
+                    f"{hypothesis.source_mechanism.mechanism_id}@"
+                    f"{hypothesis.source_mechanism.version}"
+                )
+                run_metrics.record_candidate_tested(ref)
+                tested_transfer_refs.add(ref)
             if previous is None:
                 sidecar.freeze_hypothesis(hypothesis)
                 frozen[hypothesis.hypothesis_id] = hypothesis
@@ -125,6 +141,10 @@ def run_episode(
             post_observation=post,
         )
         for measurement in measurements:
+            run_metrics.record_measurement(
+                instrument_uuid=measurement.instrument_uuid,
+                crystal_uuid=measurement.crystal_uuid,
+            )
             writer.append_jsonl(
                 "scientific_events.jsonl",
                 {"kind": "measurement", "measurement": measurement},
@@ -145,6 +165,13 @@ def run_episode(
             )
             repository.admit(mechanism)
             admitted_this_run.append(mechanism)
+            if hypothesis.source_mechanism is not None:
+                ref = (
+                    f"{hypothesis.source_mechanism.mechanism_id}@"
+                    f"{hypothesis.source_mechanism.version}"
+                )
+                run_metrics.record_candidate_accepted(ref)
+                accepted_transfer_refs.add(ref)
             writer.append_jsonl(
                 "scientific_events.jsonl",
                 {"kind": "validation", "validation": validation},
@@ -154,8 +181,12 @@ def run_episode(
                 {"kind": "admitted", "mechanism": mechanism},
             )
 
+    for ref in sorted(tested_transfer_refs - accepted_transfer_refs):
+        run_metrics.record_candidate_rejected(ref)
+
     evaluation = environment.evaluate_after_run()
     writer.write_json("final_scorecard.json", evaluation.scorecard)
+    snapshot = run_metrics.snapshot()
     writer.write_json(
         "metrics.json",
         {
@@ -163,6 +194,13 @@ def run_episode(
             "score_normalized": evaluation.score_normalized,
             "steps": evaluation.steps,
             "measurement_count": len(sidecar.measurements),
+            "measurement_actions": snapshot.measurement_actions,
+            "distinct_measurements": snapshot.distinct_measurements,
+            "transfer_candidates_retrieved": snapshot.transfer_candidates_retrieved,
+            "transfer_candidates_tested": snapshot.transfer_candidates_tested,
+            "transfer_candidates_accepted": snapshot.transfer_candidates_accepted,
+            "transfer_candidates_rejected": snapshot.transfer_candidates_rejected,
+            "false_transfer_events": snapshot.false_transfer_events,
             "admitted_mechanism_count": len(admitted_this_run),
         },
     )
