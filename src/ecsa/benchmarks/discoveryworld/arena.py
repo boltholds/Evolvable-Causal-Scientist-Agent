@@ -252,8 +252,9 @@ def run_episode(
             "completed_successfully": evaluation.completed_successfully,
             "score_normalized": evaluation.score_normalized,
             "steps": evaluation.steps,
-            "measurement_count": len(sidecar.measurements),
+            "measurement_count": snapshot.measurement_actions,
             "measurement_actions": snapshot.measurement_actions,
+            "parsed_measurement_count": len(sidecar.measurements),
             "distinct_measurements": snapshot.distinct_measurements,
             "transfer_candidates_retrieved": snapshot.transfer_candidates_retrieved,
             "transfer_candidates_tested": snapshot.transfer_candidates_tested,
@@ -268,7 +269,7 @@ def run_episode(
         config=config,
         evaluation=evaluation,
         admitted_mechanisms=tuple(admitted_this_run),
-        measurement_count=len(sidecar.measurements),
+        measurement_count=snapshot.measurement_actions,
     )
 
 
