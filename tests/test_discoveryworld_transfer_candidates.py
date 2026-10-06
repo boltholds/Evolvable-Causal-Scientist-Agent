@@ -62,6 +62,28 @@ def test_current_context_mechanism_is_applicable_not_transfer_candidate(
     assert repo.find_applicable(current) == (source,)
     assert repo.find_transfer_candidates(current) == ()
 
+
+
+def test_split_mechanism_is_not_cross_context_transfer_candidate(
+    tmp_path: Path,
+) -> None:
+    repo = MLMDMechanismRepository.sqlite(tmp_path / "mechanisms.sqlite")
+    source = source_mechanism()
+    split = MechanismRecord(
+        mechanism_id="split-reactor-law",
+        version=1,
+        kind=source.kind,
+        epistemic_status=source.epistemic_status,
+        representation_artifact="reactor-rule:sha256:" + "b" * 64,
+        scope=source.scope,
+        transfer_status=TransferStatus.SPLIT,
+        supporting_evidence=source.supporting_evidence,
+    )
+    repo.admit(split)
+
+    assert repo.find_applicable(reactor_context(0)) == (split,)
+    assert repo.find_transfer_candidates(reactor_context(1)) == ()
+
 def test_transfer_candidates_exclude_deprecated_latest_version(
     tmp_path: Path,
 ) -> None:
