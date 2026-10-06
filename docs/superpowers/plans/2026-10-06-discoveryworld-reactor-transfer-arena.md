@@ -40,6 +40,7 @@
 - Create tests/test_discoveryworld_reactor_lab.py.
 - Create tests/test_discoveryworld_transfer_candidates.py.
 - Create tests/test_discoveryworld_arena.py.
+- Create tests/support/__init__.py and tests/support/discoveryworld_policy.py — deterministic importable policy factory for CLI/smoke verification.
 - Modify README.md and docs/INTEGRATION_PLAN.md only after the executable arena is green.
 
 ## Review Focus
@@ -86,10 +87,15 @@ def test_action_call_ticks_exactly_once():
     env.act({"action": "TELEPORT_TO_LOCATION", "arg1": "quantum reactor lab"})
     assert env.steps == before + 1
 
-def test_failed_action_still_ticks_once():
+def test_failed_action_still_ticks_once(monkeypatch):
     env = DiscoveryWorldEnvironmentAdapter.reactor_lab_normal(0)
     before = env.steps
-    result = env.act({"action": "THIS_ACTION_DOES_NOT_EXIST"})
+    monkeypatch.setattr(
+        env._api,
+        "performAgentAction",
+        lambda **_: {"success": False, "errors": ["invalid"]},
+    )
+    result = env.act({"action": "PICKUP"})
     assert result.success is False
     assert env.steps == before + 1
 
@@ -150,7 +156,7 @@ class DiscoveryWorldEvaluation:
     completed_successfully: bool
     score_normalized: float
     steps: int
-    scorecard: dict[str, JSONValue]
+    scorecard: list[dict[str, JSONValue]]
 ```
 
 Validate seed 0-4 and positive max_steps in the Reactor convenience constructor rather than making the generic config reject future scenarios.
@@ -208,7 +214,7 @@ git commit -m "feat: add pinned DiscoveryWorld environment adapter"
 
 **Interfaces:**
 - Consumes: pre/post agent-visible observations and ActionPacket from Task 1.
-- Produces: MeasurementKind, ReactorMeasurement, ReactorFrequencyPrediction, ReactorMechanismHypothesis, ReactorValidationEvent, ReactorLabScientificSidecar, ReactorRuleArtifactStore.
+- Produces: MeasurementKind, ReactorMeasurement, ReactorFrequencyPrediction, ReactorMechanismHypothesis, ReactorValidationEvent, ReactorLabScientificSidecar, ReactorRuleArtifactStore, reactor_context().
 
 - [ ] **Step 1: Write failing measurement-parser tests using real upstream message forms**
 
@@ -253,7 +259,7 @@ class ReactorMechanismHypothesis: ...
 class ReactorValidationEvent: ...
 ```
 
-ReactorMechanismHypothesis fields are hypothesis_id, measurement_kind, slope, offset, source_evidence_ids, predictions. ReactorFrequencyPrediction binds target_crystal_uuid, target_reactor_uuid, predicted_frequency, and frozen_step.
+ReactorMechanismHypothesis fields are hypothesis_id, measurement_kind, slope, offset, source_evidence_ids, predictions, and optional source_mechanism: MechanismVersionRef | None. ReactorFrequencyPrediction binds target_crystal_uuid, target_reactor_uuid, predicted_frequency, and frozen_step. The source_mechanism field is set only when the hypothesis is explicitly derived from a retrieved transfer candidate.
 
 - [ ] **Step 4: Implement parse_public_measurement() and record_transition()**
 
@@ -261,6 +267,9 @@ Required signatures:
 
 ```python
 def parse_public_measurement(message: str) -> ParsedMeasurement | None: ...
+
+def reactor_context(seed: int) -> ApplicabilityContext:
+    ...
 
 class ReactorLabScientificSidecar:
     def record_transition(
@@ -275,7 +284,7 @@ class ReactorLabScientificSidecar:
     ) -> tuple[ReactorMeasurement, ...]: ...
 ```
 
-Only successful USE instrument-on-crystal actions may create ReactorMeasurement. Object names/UUIDs come from the public pre-observation; measured values come from post-observation ui.lastActionMessage.
+reactor_context(seed) returns context_id=f"discoveryworld:reactor-lab:normal:seed-{seed}", regime_id="normal", domain_id="discoveryworld", task_id="reactor-lab", assumptions=("public-observation-only", "linear-family"). Only successful USE instrument-on-crystal actions may create ReactorMeasurement. Object names/UUIDs come from the public pre-observation; measured values come from post-observation ui.lastActionMessage.
 
 - [ ] **Step 5: Write RED tests for prospective validation and oracle independence**
 
@@ -322,7 +331,7 @@ def build_admitted_reactor_mechanism(
 ) -> MechanismRecord: ...
 ```
 
-Output kind=SYMBOLIC_RULE, status=ADMITTED, scope context_ids=(context_id,), regime_ids=("normal",), domain_ids=("discoveryworld",), task_ids=("reactor-lab",), required assumptions include public-observation and linear-family identifiers.
+Output kind=SYMBOLIC_RULE, status=ADMITTED, scope context_ids=(context_id,), regime_ids=("normal",), domain_ids=("discoveryworld",), task_ids=("reactor-lab",), required assumptions include public-observation-only and linear-family. If hypothesis.source_mechanism is set, add MechanismRelation(SPECIALIZES, source_mechanism); otherwise relations are empty.
 
 - [ ] **Step 8: Run Reactor tests and full suite GREEN**
 
@@ -495,13 +504,13 @@ def run_episode(
 
 At each step:
 1. observe;
-2. build ScientificContext from find_applicable() and find_transfer_candidates();
+2. build the canonical ApplicabilityContext with reactor_context(config.seed), then build ScientificContext from find_applicable() and find_transfer_candidates();
 3. call policy;
 4. freeze any hypotheses before action;
 5. act (which ticks exactly once);
 6. observe post-action;
 7. record public scientific evidence and validation;
-8. admit only newly validated target-context mechanisms;
+8. admit only newly validated target-context mechanisms; hypotheses derived from a transfer candidate must persist SPECIALIZES lineage to that exact source MechanismVersionRef;
 9. log event.
 
 After loop, call evaluate_after_run() and write evaluator-only scorecard.
@@ -671,6 +680,8 @@ git commit -m "feat: add DiscoveryWorld transfer metrics"
 - Modify: src/ecsa/benchmarks/discoveryworld/arena.py
 - Modify: README.md
 - Modify: docs/INTEGRATION_PLAN.md
+- Create: tests/support/__init__.py
+- Create: tests/support/discoveryworld_policy.py
 - Test: tests/test_discoveryworld_arena.py
 
 **Interfaces:**
@@ -682,7 +693,7 @@ git commit -m "feat: add DiscoveryWorld transfer metrics"
 Create a test-only module factory and assert:
 
 ```python
-factory = load_policy_factory("tests.discoveryworld_policy:create_policy")
+factory = load_policy_factory("tests.support.discoveryworld_policy:create_policy")
 policy = factory({"model": "deterministic-test"})
 assert isinstance(policy, DiscoveryWorldActionPolicy)
 ```
@@ -749,6 +760,6 @@ Open one generated run directory and verify:
 - [ ] **Step 7: Commit**
 
 ```bash
-git add src/ecsa/benchmarks/discoveryworld README.md docs/INTEGRATION_PLAN.md tests/test_discoveryworld_arena.py
+git add src/ecsa/benchmarks/discoveryworld README.md docs/INTEGRATION_PLAN.md tests/test_discoveryworld_arena.py tests/support
 git commit -m "feat: finish DiscoveryWorld Reactor transfer arena"
 ```
