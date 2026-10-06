@@ -171,6 +171,27 @@ def test_frozen_prediction_validates_only_on_new_public_activation() -> None:
     assert event.validation_step == 8
 
 
+
+
+def test_new_public_uncalibrated_state_is_failed_prospective_validation() -> None:
+    source = MechanismVersionRef("source-reactor-law", 1)
+    sidecar = ReactorLabScientificSidecar()
+    sidecar.freeze_hypothesis(hypothesis(source_mechanism=source))
+
+    events = sidecar.observe_validation(
+        step=8,
+        pre_observation=observation(
+            reactor_name="crystal reactor (uncalibrated)"
+        ),
+        post_observation=observation(
+            reactor_name="crystal reactor (uncalibrated)"
+        ),
+    )
+
+    assert len(events) == 1
+    assert events[0].success is False
+    assert events[0].target_reactor_uuid == 404
+
 def test_already_activated_reactor_is_not_retrospective_validation() -> None:
     sidecar = ReactorLabScientificSidecar()
     sidecar.freeze_hypothesis(hypothesis())
