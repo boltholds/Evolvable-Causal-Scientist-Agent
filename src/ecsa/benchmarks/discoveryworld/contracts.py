@@ -3,9 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 from math import isfinite
-from typing import TypeAlias
+from typing import Protocol, TypeAlias, runtime_checkable
 
-from ecsa.mechanisms import MechanismVersionRef
+from ecsa.mechanisms import MechanismRecord, MechanismVersionRef
 
 
 JSONScalar: TypeAlias = None | bool | int | float | str
@@ -186,3 +186,47 @@ class ReactorValidationEvent:
             raise ValueError("validation step must be nonnegative")
         if type(self.success) is not bool:
             raise ValueError("validation success must be bool")
+
+
+
+@dataclass(frozen=True)
+class ScientificContext:
+    context_id: str
+    measurements: tuple[ReactorMeasurement, ...]
+    transfer_candidates: tuple[MechanismRecord, ...]
+    admitted_mechanisms: tuple[MechanismRecord, ...]
+
+
+@dataclass(frozen=True)
+class PolicyDecision:
+    action: ActionPacket
+    reasoning: str | None = None
+    memory: str | None = None
+    hypotheses: tuple[ReactorMechanismHypothesis, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.action, dict) or not isinstance(
+            self.action.get("action"), str
+        ):
+            raise ValueError("policy decision requires an action packet")
+        if not isinstance(self.hypotheses, tuple):
+            raise ValueError("hypotheses must be immutable")
+
+
+@runtime_checkable
+class DiscoveryWorldActionPolicy(Protocol):
+    def decide(
+        self,
+        observation: dict[str, JSONValue],
+        available_actions: dict[str, JSONValue],
+        teleport_locations: dict[str, JSONValue],
+        scientific_context: ScientificContext,
+    ) -> PolicyDecision: ...
+
+
+@dataclass(frozen=True)
+class ArenaEpisodeResult:
+    config: DiscoveryWorldEpisodeConfig
+    evaluation: DiscoveryWorldEvaluation
+    admitted_mechanisms: tuple[MechanismRecord, ...]
+    measurement_count: int
