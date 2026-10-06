@@ -100,3 +100,19 @@ def test_population_anomaly_is_not_uniform_reset() -> None:
 def test_posterior_rejects_non_normalized_distribution() -> None:
     with pytest.raises(ValueError):
         TheoryPosterior((("h1", 0.5), ("h2", 0.4)))
+
+
+def test_admit_theory_assigns_small_prior_mass_and_preserves_relative_old_mass() -> None:
+    posterior = TheoryPosterior((("h1", 0.8), ("h2", 0.2)))
+    new_theory = TheoryRef("h3", "state-augmented:sha256:" + "a" * 64)
+
+    admitted = ScienceKernel().admit_theory(
+        posterior,
+        new_theory,
+        prior_mass=0.05,
+    )
+
+    assert admitted.probability("h3") == pytest.approx(0.05)
+    assert admitted.probability("h1") == pytest.approx(0.76)
+    assert admitted.probability("h2") == pytest.approx(0.19)
+    assert admitted.probability("h1") / admitted.probability("h2") == pytest.approx(4.0)
