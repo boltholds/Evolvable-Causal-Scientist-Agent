@@ -151,7 +151,7 @@ def _public_reactor_frequency(
     if not isinstance(dialog_in, str):
         return None
     match = re.search(
-        rf"current resonance frequenc(?:e|y) is:\\s*{_NUMBER}\\s*Hertz",
+        rf"current resonance frequenc(?:e|y) is:\s*{_NUMBER}\s*Hertz",
         dialog_in,
         flags=re.IGNORECASE,
     )
