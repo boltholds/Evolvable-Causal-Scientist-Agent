@@ -242,9 +242,27 @@ class ReactorLabScientificSidecar:
         step: int,
         pre_observation: dict[str, JSONValue],
         post_observation: dict[str, JSONValue],
+        hypothesis_ids: tuple[str, ...] | None = None,
     ) -> tuple[ReactorValidationEvent, ...]:
         events: list[ReactorValidationEvent] = []
-        for hypothesis in self._hypotheses.values():
+        if hypothesis_ids is None:
+            hypotheses = tuple(self._hypotheses.values())
+        else:
+            missing = [
+                hypothesis_id
+                for hypothesis_id in hypothesis_ids
+                if hypothesis_id not in self._hypotheses
+            ]
+            if missing:
+                raise ValueError(
+                    f"validation references unfrozen hypotheses: {missing}"
+                )
+            hypotheses = tuple(
+                self._hypotheses[hypothesis_id]
+                for hypothesis_id in hypothesis_ids
+            )
+
+        for hypothesis in hypotheses:
             for prediction in hypothesis.predictions:
                 key = (hypothesis.hypothesis_id, prediction.target_reactor_uuid)
                 if key in self._validated or prediction.frozen_step >= step:
