@@ -322,6 +322,7 @@ class MechanismRepository(Protocol):
     def admit(...): ...
     def get(...): ...
     def find_applicable(...): ...
+    def find_transfer_candidates(...): ...
     def lineage(...): ...
 ```
 
@@ -418,6 +419,79 @@ Current repository acceptance:
 
 Backend-specific BCS model hydration and symbolic planner-operator hydration
 remain future adapter work.
+
+### DiscoveryWorld Reactor Lab transfer arena
+
+**Status: executable harness integrated; scientific transfer result not yet claimed.**
+
+The first external environment is the Apache-2.0 DiscoveryWorld benchmark,
+pinned to `allenai/discoveryworld` revision
+`fd591323920be0d3786ef350955de1945aa571e5`.
+
+The first arena is fixed to:
+
+- scenario: `Reactor Lab`;
+- difficulty: `Normal`;
+- official seeds: `0,1,2,3,4`;
+- one agent;
+- maximum model-backed budget: 1000 environment interactions.
+
+`DiscoveryWorldEnvironmentAdapter` exposes only ordinary agent observations,
+action descriptions, teleport locations, and action results. Each
+`performAgentAction()` is followed by exactly one `tick()`, including failed
+actions. `getTaskScorecard()`, critical questions/hypotheses, hidden
+`scoringInfo`, object internals, and full world history remain evaluator-only.
+
+The Reactor Lab sidecar converts public instrument-result text into typed
+measurements, freezes linear frequency hypotheses before their predicted
+outcomes, and validates them only from later public reactor state. Successful
+validation produces a context-scoped `SYMBOLIC_RULE` mechanism; transfer
+hypotheses preserve `SPECIALIZES` lineage to the source mechanism.
+
+Cross-context lookup is deliberately separated:
+
+- `find_applicable(context)` requires the current seed/context to be in scope;
+- `find_transfer_candidates(context)` ignores only context membership while
+  requiring compatible regime/domain/task/assumptions;
+- transfer candidates are guidance for target validation, not executable facts;
+- failed source-backed prospective validation is counted as a false transfer.
+
+The arena implements progressive online transfer in seed order 0→4:
+
+```text
+cold:
+  each seed -> fresh MechanismRepository
+
+reuse:
+  seed 0 -> persistent repository -> seed 1 -> ... -> seed 4
+```
+
+This avoids future-seed leakage. Both arms instantiate fresh copies of the same
+policy factory from the same JSON config and therefore share a deterministic
+policy-config hash; the intended independent variable is accumulated mechanism
+memory.
+
+Per-run logs separate policy-facing and oracle information and include actions,
+observations, scientific events, mechanism events, metrics, and final
+scorecards. Metrics distinguish measurements, candidate retrieval/testing,
+accepted/rejected transfer, and false transfer. Transfer gain uses
+`1 - reuse/cold` and remains undefined when the cold denominator is zero.
+
+CI runs a real deterministic no-LLM smoke for both arms across all five
+official seeds with one interaction per episode. That smoke validates the
+pinned environment, progressive orchestration, filesystem artifacts, and
+oracle firewall. It does **not** establish that reuse reduces environment
+sample complexity.
+
+The scientific acceptance experiment is still:
+
+- run the same model-backed policy in cold and reuse arms at the full
+  1000-interaction limit;
+- compare raw per-seed results for seeds 1-4;
+- report success/procedural score, environment steps, scientific measurements,
+  accepted/rejected transfer, and false-transfer cost;
+- claim transfer benefit only if the measured environment interaction burden
+  improves without an unacceptable increase in false transfer.
 
 Acceptance:
 
