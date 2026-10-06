@@ -14,6 +14,6 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install
-        run: pip install -e '.[test,bcs,bocpd]'
+        run: pip install -e '.[test,bcs,bocpd,dreamcoder]'
       - name: Test
         run: pytest -q
