@@ -56,11 +56,13 @@ def _register_primitives(names):
 
 def _synthesize(payload) -> dict:
     from dreamcoder.grammar import Grammar
+    from dreamcoder.program import Invented, Program
     from dreamcoder.task import Task
     from dreamcoder.type import Context, arrow, tbool
 
     arity = int(payload["arity"])
     primitive_names = tuple(payload["primitives"])
+    library_programs = tuple(payload.get("library_programs", ()))
     examples = payload["examples"]
     maximum_mdl = float(payload["maximum_mdl"])
     maximum_programs = int(payload["maximum_programs"])
@@ -76,7 +78,13 @@ def _synthesize(payload) -> dict:
             for example in examples
         ],
     )
-    grammar = Grammar.uniform(_register_primitives(primitive_names))
+    productions = _register_primitives(primitive_names)
+    for source in library_programs:
+        parsed = Program.parse(source)
+        productions.append(
+            parsed if isinstance(parsed, Invented) else Invented(parsed)
+        )
+    grammar = Grammar.uniform(productions)
 
     enumerated = 0
     lower = 0.0
@@ -122,6 +130,7 @@ def _synthesize(payload) -> dict:
         "status": "found" if best is not None else "not_found",
         "programs_enumerated": enumerated,
         "request": str(request),
+        "library_programs_loaded": len(library_programs),
     }
     if best is not None:
         result.update(best)
