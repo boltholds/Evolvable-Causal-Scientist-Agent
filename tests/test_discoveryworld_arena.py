@@ -644,3 +644,20 @@ def test_transfer_summary_reports_per_seed_and_seed1_to4_aggregate(
     assert summary.per_seed[1].step_transfer_gain == pytest.approx(0.5)
     assert summary.mean_measurement_transfer_gain == pytest.approx(0.6)
     assert summary.mean_step_transfer_gain == pytest.approx(0.5)
+
+
+
+def test_progressive_transfer_refuses_existing_repository_state(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "reuse-mechanisms.sqlite").write_bytes(b"stale")
+
+    with pytest.raises(FileExistsError, match="reuse"):
+        run_progressive_transfer(
+            seeds=(0,),
+            policy_factory=lambda config: RecordingPolicy([]),
+            policy_config={"model": "deterministic"},
+            output_dir=tmp_path,
+            max_steps=1,
+            episode_runner=lambda **kwargs: None,
+        )
