@@ -23,7 +23,7 @@ from ecsa.benchmarks.discoveryworld.arena import (
     run_episode,
     run_progressive_transfer,
 )
-from ecsa.benchmarks.discoveryworld.metrics import ReactorRunMetricsAccumulator, compute_transfer_gain
+from ecsa.benchmarks.discoveryworld.metrics import ReactorRunMetricsAccumulator, compute_transfer_gain, summarize_transfer
 from ecsa.mechanisms import (
     EpistemicStatus,
     MechanismKind,
@@ -581,3 +581,47 @@ def test_real_progressive_smoke_all_official_seeds(
             / "reuse"
             / "final_scorecard.json"
         ).exists()
+
+
+
+def test_transfer_summary_reports_per_seed_and_seed1_to4_aggregate(
+    tmp_path: Path,
+) -> None:
+    def policy_factory(config_dict):
+        return RecordingPolicy([])
+
+    def episode_runner(*, config, policy, repository, output_dir):
+        is_reuse = output_dir.name == "reuse"
+        measurements = (
+            0 if config.seed == 0
+            else (4 if is_reuse else 10)
+        )
+        steps = 1 if config.seed == 0 else (5 if is_reuse else 10)
+        return arena_module.ArenaEpisodeResult(
+            config=config,
+            evaluation=DiscoveryWorldEvaluation(
+                completed_successfully=False,
+                score_normalized=0.0,
+                steps=steps,
+                scorecard=[],
+            ),
+            admitted_mechanisms=(),
+            measurement_count=measurements,
+        )
+
+    result = run_progressive_transfer(
+        seeds=(0, 1, 2, 3, 4),
+        policy_factory=policy_factory,
+        policy_config={"model": "deterministic"},
+        output_dir=tmp_path,
+        max_steps=10,
+        episode_runner=episode_runner,
+    )
+    summary = summarize_transfer(result)
+
+    assert [item.seed for item in summary.per_seed] == [0, 1, 2, 3, 4]
+    assert summary.per_seed[0].measurement_transfer_gain is None
+    assert summary.per_seed[1].measurement_transfer_gain == pytest.approx(0.6)
+    assert summary.per_seed[1].step_transfer_gain == pytest.approx(0.5)
+    assert summary.mean_measurement_transfer_gain == pytest.approx(0.6)
+    assert summary.mean_step_transfer_gain == pytest.approx(0.5)
