@@ -305,9 +305,9 @@ The ECSA contract must remain usable with another metadata backend later; MLMD-s
 
 ## 11. Runtime projections
 
-The mechanism library is the source of reusable scientific knowledge. Individual engines receive filtered projections.
+**Status: first executable projection layer integrated.**
 
-Example:
+The mechanism library is the source of reusable scientific knowledge. Individual engines receive filtered projections.
 
 ```text
 MechanismRepository
@@ -317,12 +317,42 @@ current context / regime / assumptions
 find_applicable(...)
         |
         +-- DreamCoder grammar projection
-        +-- BCS theory/model projection
-        +-- symbolic planner operator projection
-        +-- state-feature projection
+        +-- BCS causal-model artifact view
+        +-- symbolic-rule artifact view
+        +-- state-feature artifact view
 ```
 
-DreamCoder's Grammar is therefore a runtime projection of applicable program mechanisms, not the authoritative long-term mechanism archive.
+`MechanismRuntimeProjector` now provides typed artifact views for admitted
+`CAUSAL_MODEL`, `STATE_FEATURE`, and `SYMBOLIC_RULE` mechanisms. These
+views deliberately stop at artifact references until a backend-specific loader
+is available; the projection layer does not invent a BCS model loader or PDDL
+compiler.
+
+`DreamCoderGrammarProjector` is executable. It:
+
+1. queries only mechanisms applicable to the current context;
+2. selects admitted `PROGRAM` mechanisms;
+3. resolves a direct `dreamcoder-program` representation or a qualified
+   `program-mechanism` projection back to its exact source DreamCoder
+   artifact;
+4. loads the stored program body;
+5. passes those programs into DreamCoder as reusable library productions.
+
+The DreamCoder worker wraps each reused program in the upstream
+`Invented` representation and adds it to the real `Grammar`. Thus the
+repository remains the source of truth while the Grammar is an execution-time
+projection.
+
+The acceptance scenario synthesizes and prospectively qualifies a Boolean
+program in one context, admits it with `SHARED` scope covering a second
+context, then projects it into DreamCoder in that second context. Warm
+synthesis must enumerate strictly fewer programs than cold-start synthesis on
+the same target.
+
+This currently demonstrates **computational reuse** of admitted mechanisms. It
+does not yet establish that reuse reduces the number of interventions required
+in a new environment; transfer sample efficiency remains an arena-level
+acceptance criterion.
 
 ## 12. Non-goals
 
