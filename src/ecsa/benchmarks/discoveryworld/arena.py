@@ -30,7 +30,7 @@ from .reactor_lab import (
     reactor_context,
 )
 from .runlog import ArenaRunWriter
-from .metrics import ReactorRunMetricsAccumulator
+from .metrics import ReactorRunMetricsAccumulator, summarize_transfer
 
 
 def run_episode(
@@ -374,8 +374,14 @@ def _parse_seeds(value: str) -> tuple[int, ...]:
 
 
 def _summary_wire(result: TransferArenaResult) -> dict:
+    transfer = summarize_transfer(result)
+    by_seed = {item.seed: item for item in transfer.per_seed}
     return {
         "policy_config_hash": result.policy_config_hash,
+        "mean_measurement_transfer_gain": (
+            transfer.mean_measurement_transfer_gain
+        ),
+        "mean_step_transfer_gain": transfer.mean_step_transfer_gain,
         "pairs": [
             {
                 "seed": pair.seed,
@@ -393,6 +399,10 @@ def _summary_wire(result: TransferArenaResult) -> dict:
                     "starting_mechanism_count": pair.reuse.starting_mechanism_count,
                     "ending_mechanism_count": pair.reuse.ending_mechanism_count,
                 },
+                "measurement_transfer_gain": (
+                    by_seed[pair.seed].measurement_transfer_gain
+                ),
+                "step_transfer_gain": by_seed[pair.seed].step_transfer_gain,
             }
             for pair in result.pairs
         ],
