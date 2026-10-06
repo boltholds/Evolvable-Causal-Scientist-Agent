@@ -122,6 +122,14 @@ class TTTRepairEngine:
         )
         return (proposal,)
 
+    def load_fixture(self, fixture_id: str | None = None) -> dict:
+        target = fixture_id or self.fixture_id
+        runner = self._load_runner()
+        for fixture in runner.load_fixtures():
+            if fixture["id"] == target:
+                return fixture
+        raise ValueError(f"unknown BCS TTT fixture: {target}")
+
     def load_artifact(self, artifact_id: str) -> dict:
         digest = self._artifact_digest(artifact_id)
         path = self._artifact_path(digest)
