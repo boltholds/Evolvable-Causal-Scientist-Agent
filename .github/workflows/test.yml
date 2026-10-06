@@ -21,6 +21,9 @@ jobs:
         run: |
           Rscript -e 'install.packages(c("rlist","combinat","dplyr","car"), repos="https://packagemanager.posit.co/cran/__linux__/noble/latest")'
       - name: Install
-        run: pip install -e '.[test,bcs,bocpd,dreamcoder,mlmd]'
+        run: pip install -e '.[test,bcs,bocpd,dreamcoder,mlmd,discoveryworld]'
       - name: Test
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
         run: pytest -q
