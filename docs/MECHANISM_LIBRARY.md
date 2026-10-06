@@ -6,13 +6,18 @@ The ECSA mechanism library is the long-term scientific memory for reusable mecha
 
 It is intentionally **not** a second artifact database, model registry, lineage engine, DreamCoder grammar, or causal inference engine. ECSA owns the semantic contract for what a mechanism means, when it may be admitted, and where it is applicable. Persistence, versioned metadata storage, and workflow lineage are delegated to ML Metadata (MLMD) through a repository adapter.
 
-The first persistence implementation is planned as:
+The first persistence implementation is now executable:
 
 ```text
 MechanismRepository
         |
         +-- MLMDMechanismRepository
+              |
+              +-- MLMD 1.21
+              +-- SQLite reference backend
 ```
+
+`MLMDMechanismRepository` persists immutable mechanism versions, admission/deprecation executions, exact external input artifacts, scope contexts, and typed mechanism-relation lineage without exposing MLMD protobuf types through the core repository protocol.
 
 The ECSA core must depend on the `MechanismRepository` protocol rather than on MLMD runtime types.
 
@@ -258,7 +263,7 @@ class MechanismRepository(Protocol):
 
 Concrete persistence/backend concerns are outside the scientific core.
 
-The first intended implementation is `MLMDMechanismRepository`.
+The first implementation is `MLMDMechanismRepository`, backed by MLMD 1.21 with SQLite in the current acceptance suite.
 
 ## 10. MLMD mapping
 
@@ -334,9 +339,11 @@ Mechanism Library v1 does not:
 - erase deprecated/contradicted mechanisms or their supporting history;
 - require all mechanism kinds to share one executable representation.
 
-## 13. Acceptance criteria for the first implementation
+## 13. First implementation status and acceptance criteria
 
-The first executable repository implementation is complete when it can:
+**Status: implemented and covered by the integration suite.**
+
+The first executable repository implementation can:
 
 1. admit a qualified mechanism with explicit scope, assumptions, evidence, and provenance;
 2. persist the record and its lineage through MLMD;
