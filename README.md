@@ -33,9 +33,34 @@ The system separates three concerns:
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the architecture contract and [docs/INTEGRATION_PLAN.md](docs/INTEGRATION_PLAN.md) for the staged implementation plan.
 
-## Status
+## Current executable milestone
 
-Architecture v1 is being specified. The repository does **not** yet claim that the listed external systems are integrated or interchangeable. Each integration will be added behind explicit adapters and validated by end-to-end experiments.
+The first vertical slice now lives in `main`:
+
+- immutable theory / experiment / observation contracts;
+- Bayesian posterior updates over competing theories;
+- exact expected information gain for discrete experiment outcomes;
+- automatic selection of the most discriminating experiment;
+- explicit `PopulationAnomaly` when the whole current theory population assigns zero support to an observation;
+- a thin adapter into the existing Behavioral-Causal-State `evaluate()` API;
+- an end-to-end test using two real BCS `BooleanCore` theories.
+
+The BCS repository is pinned as an optional Git dependency rather than copied into this project.
+
+Run the full tests:
+
+```bash
+python -m pip install -e '.[test,bcs]'
+pytest -q
+```
+
+Run the minimal example:
+
+```bash
+python examples/first_vertical_slice.py
+```
+
+The project still does **not** claim that the remaining external engines are integrated or interchangeable. Each one will be connected behind an explicit adapter and validated experimentally.
 
 ## License
 
