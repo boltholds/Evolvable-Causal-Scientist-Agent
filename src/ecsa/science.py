@@ -10,6 +10,7 @@ from .contracts import (
     PosteriorUpdate,
     PredictiveDistribution,
     TheoryPosterior,
+    TheoryRef,
 )
 
 
@@ -110,7 +111,7 @@ class ScienceKernel:
     def admit_theory(
         self,
         posterior: TheoryPosterior,
-        theory,
+        theory: TheoryRef,
         *,
         prior_mass: float,
     ) -> TheoryPosterior:
