@@ -15,6 +15,7 @@ from ecsa.mechanisms import (
     MechanismRepository,
     MechanismStatus,
     MechanismTransferStatus,
+    MechanismVersionRef,
 )
 
 
@@ -27,8 +28,19 @@ _DEPRECATION_EXECUTION = "MechanismDeprecation"
 class MLMDMechanismRepository(MechanismRepository):
     """MLMD-backed persistence and lineage for ECSA mechanism records."""
 
-    def __init__(self, store: metadata_store.MetadataStore) -> None:
-        self._store = store
+    def __init__(
+        self,
+        store_or_path: metadata_store.MetadataStore | Path | str,
+    ) -> None:
+        if isinstance(store_or_path, (str, Path)):
+            path = Path(store_or_path)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            config = metadata_store_pb2.ConnectionConfig()
+            config.sqlite.filename_uri = str(path)
+            config.sqlite.connection_mode = 3  # READWRITE_OPENCREATE
+            self._store = metadata_store.MetadataStore(config)
+        else:
+            self._store = store_or_path
         self._mechanism_type_id = self._ensure_artifact_type(
             _MECHANISM_TYPE
         )
@@ -64,9 +76,18 @@ class MLMDMechanismRepository(MechanismRepository):
 
     def get(
         self,
-        mechanism_id: str,
+        mechanism: MechanismVersionRef | str,
         version: int | None = None,
     ) -> MechanismRecord | None:
+        if isinstance(mechanism, MechanismVersionRef):
+            if version is not None:
+                raise ValueError(
+                    "version is redundant with MechanismVersionRef"
+                )
+            mechanism_id = mechanism.mechanism_id
+            version = mechanism.version
+        else:
+            mechanism_id = mechanism
         if not mechanism_id:
             raise ValueError("mechanism_id is required")
         if version is not None:
@@ -141,10 +162,10 @@ class MLMDMechanismRepository(MechanismRepository):
 
     def lineage(
         self,
-        mechanism_id: str,
+        mechanism: MechanismVersionRef | str,
         version: int | None = None,
     ) -> MechanismLineage | None:
-        record = self.get(mechanism_id, version)
+        record = self.get(mechanism, version)
         if record is None:
             return None
         artifact = self._get_mechanism_artifact(
@@ -216,11 +237,17 @@ class MLMDMechanismRepository(MechanismRepository):
             prior_version = (prior_id, int(prior_version_text))
 
         return MechanismLineage(
+            mechanism=record.ref,
             record=record,
             representation_artifact_id=record.representation_artifact_id,
             supporting_evidence_ids=record.supporting_evidence_ids,
             contradicting_evidence_ids=record.contradicting_evidence_ids,
             provenance_artifact_ids=record.provenance_artifact_ids,
+            relations=record.relations,
+            related_mechanisms=tuple(
+                relation.target
+                for relation in record.relations
+            ),
             execution_kind=types[0].name,
             prior_version=prior_version,
         )
@@ -266,7 +293,7 @@ class MLMDMechanismRepository(MechanismRepository):
             record.version,
         ) is not None:
             raise ValueError(
-                "mechanism identity/version is already persisted"
+                "mechanism identity/version already exists"
             )
 
         relation_artifacts = []
