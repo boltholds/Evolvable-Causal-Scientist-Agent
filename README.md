@@ -70,7 +70,7 @@ The executable path in `main` now includes:
 - an explicit ECSA transfer-scope projection from VARIO partitions: one context group → `SHARED`, multiple groups with reuse → `CONTEXT_SPECIALIZED`, all singleton groups → `SPLIT`;
 - content-addressed VARIO transfer artifacts binding the Stitch abstraction, context evidence hashes, official source checksum, learned partition, MDL score, and ECSA scope;
 - a fixed **Mechanism Library v1 architecture contract**: ECSA owns mechanism identity/version, kind, epistemic status, scope, assumptions, evidence, relations, admission, and applicability semantics, while persistence/lineage are delegated behind a `MechanismRepository` protocol;
-- **ML Metadata (MLMD)** is the selected first persistence/lineage backend for the repository adapter; `MLMDMechanismRepository` is planned but not implemented yet;
+- **ML Metadata (MLMD) 1.21** is the first persistence/lineage backend: `MLMDMechanismRepository` is implemented with SQLite acceptance coverage for admission, version lookup, applicability, exact input lineage, supersession, and immutable deprecation;
 - end-to-end tests using real BCS models, a real Java/LearnLib TTT learner, the external BOCPD implementation, the pinned DreamCoder core, the real Rust Stitch compressor, and the official VARIO R implementation.
 
 The TTT integration does **not** vendor the BCS TTT implementation. The adapter checks out the pinned BCS source revision, invokes its existing bridge, and records the learned machine as an ECSA artifact.
