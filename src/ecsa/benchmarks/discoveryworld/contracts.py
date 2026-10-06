@@ -15,6 +15,31 @@ JSONValue: TypeAlias = (
 ActionPacket: TypeAlias = dict[str, JSONScalar]
 
 
+def validate_action_packet(action: object) -> None:
+    if not isinstance(action, dict):
+        raise ValueError("action packet must be a dictionary")
+    if not all(
+        isinstance(key, str)
+        and (
+            value is None
+            or type(value) in (bool, int, float, str)
+        )
+        for key, value in action.items()
+    ):
+        raise ValueError("action packet keys/values must be JSON scalars")
+
+    ordinary = isinstance(action.get("action"), str) and bool(
+        action.get("action")
+    )
+    dialog_value = action.get("chosen_dialog_option_int")
+    dialog = type(dialog_value) is int and dialog_value >= 0
+    if ordinary == dialog:
+        raise ValueError(
+            "action packet must contain exactly one of a nonempty 'action' "
+            "or a nonnegative 'chosen_dialog_option_int'"
+        )
+
+
 @dataclass(frozen=True)
 class DiscoveryWorldEpisodeConfig:
     scenario: str
@@ -206,10 +231,7 @@ class PolicyDecision:
     validation_hypothesis_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        if not isinstance(self.action, dict) or not isinstance(
-            self.action.get("action"), str
-        ):
-            raise ValueError("policy decision requires an action packet")
+        validate_action_packet(self.action)
         if not isinstance(self.hypotheses, tuple):
             raise ValueError("hypotheses must be immutable")
         if (
