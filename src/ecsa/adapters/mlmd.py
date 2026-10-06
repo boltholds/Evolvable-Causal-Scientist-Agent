@@ -200,6 +200,7 @@ class MLMDMechanismRepository(MechanismRepository):
             for record in latest.values()
             if (
                 record.status is MechanismStatus.ADMITTED
+                and context.context_id not in record.scope.context_ids
                 and matches_dimension(
                     record.scope.regime_ids,
                     context.regime_id,
