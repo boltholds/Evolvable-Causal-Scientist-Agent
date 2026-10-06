@@ -57,6 +57,10 @@ The executable path in `main` now includes:
 - an isolated DreamCoder worker that bypasses only the legacy eager package initializer, avoiding its unrelated historical domain dependencies while preserving the original enumerator;
 - a first explicit Boolean mechanism domain adapter with provenance-bearing examples and a bounded DSL;
 - content-addressed DreamCoder program artifacts carrying the synthesized program, MDL/log prior, DSL, examples, enumeration count, and pinned source revision;
+- a DreamCoder program prediction adapter that evaluates synthesized programs through the same pinned DreamCoder `Program.parse/evaluate` runtime and emits ordinary `PredictiveDistribution` values;
+- a prospective held-out qualification gate: synthesis evidence and validation evidence must be disjoint before a program can become a `TheoryRef`;
+- coherent small-prior admission of qualified program mechanisms into the same posterior as BCS/TTT-derived theories;
+- information-directed selection over experiments where causal and synthesized-program theories disagree;
 - end-to-end tests using real BCS models, a real Java/LearnLib TTT learner, the external BOCPD implementation, and the pinned DreamCoder core.
 
 The TTT integration does **not** vendor the BCS TTT implementation. The adapter checks out the pinned BCS source revision, invokes its existing bridge, and records the learned machine as an ECSA artifact.
@@ -80,7 +84,9 @@ python examples/first_vertical_slice.py
 
 TTT, BOCPD, and DreamCoder are now integrated as distinct repair paths: TTT proposes missing state/memory structure, BOCPD proposes temporal regime change, and DreamCoder proposes executable program mechanisms when the current mechanism form is insufficient. They can all be invoked from the same `TheorySpaceExpansionRequest` and return provenance-bearing proposals without overwriting the active theory population.
 
-The current DreamCoder integration intentionally starts with one Boolean-domain adapter. It proves the generic repair boundary and real DreamCoder execution, but it does not claim a universal DSL or automatic causal admission for arbitrary synthesized programs.
+The current DreamCoder integration intentionally starts with one Boolean-domain adapter. A synthesized program is no longer admitted from training fit alone: it must make a correct prospective prediction on held-out evidence that was not used during synthesis. Only then is a content-addressed program-mechanism theory created and assigned explicit small prior mass. The adapter can subsequently compete in the same IDS experiment set as BCS theories.
+
+This proves the repair → prediction → validation → admission loop for one domain, but it does not claim a universal DSL or automatic causal semantics for arbitrary synthesized programs.
 
 The project still does **not** claim that the remaining external engines are integrated or interchangeable. Each one will be connected behind an explicit adapter and validated experimentally.
 
