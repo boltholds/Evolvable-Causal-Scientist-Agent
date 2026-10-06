@@ -99,13 +99,6 @@ def run_episode(
 
         for hypothesis in decision.hypotheses:
             previous = frozen.get(hypothesis.hypothesis_id)
-            if hypothesis.source_mechanism is not None:
-                ref = (
-                    f"{hypothesis.source_mechanism.mechanism_id}@"
-                    f"{hypothesis.source_mechanism.version}"
-                )
-                run_metrics.record_candidate_tested(ref)
-                tested_transfer_refs.add(ref)
             if previous is None:
                 sidecar.freeze_hypothesis(hypothesis)
                 frozen[hypothesis.hypothesis_id] = hypothesis
@@ -117,6 +110,20 @@ def run_episode(
                 raise ValueError(
                     f"hypothesis_id reused with different content: {hypothesis.hypothesis_id}"
                 )
+
+        for hypothesis_id in decision.validation_hypothesis_ids:
+            if hypothesis_id not in frozen:
+                raise ValueError(
+                    f"validation requested for unfrozen hypothesis: {hypothesis_id}"
+                )
+            hypothesis = frozen[hypothesis_id]
+            if hypothesis.source_mechanism is not None:
+                ref = (
+                    f"{hypothesis.source_mechanism.mechanism_id}@"
+                    f"{hypothesis.source_mechanism.version}"
+                )
+                run_metrics.record_candidate_tested(ref)
+                tested_transfer_refs.add(ref)
 
         writer.append_jsonl(
             "actions.jsonl",
@@ -156,6 +163,7 @@ def run_episode(
             step=environment.steps,
             pre_observation=pre,
             post_observation=post,
+            hypothesis_ids=decision.validation_hypothesis_ids,
         )
         for validation in validations:
             hypothesis = frozen[validation.hypothesis_id]
