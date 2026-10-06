@@ -49,6 +49,19 @@ def test_unseen_seed_is_transfer_candidate_but_not_applicable(
     assert repo.find_transfer_candidates(target) == (source,)
 
 
+
+
+def test_current_context_mechanism_is_applicable_not_transfer_candidate(
+    tmp_path: Path,
+) -> None:
+    repo = MLMDMechanismRepository.sqlite(tmp_path / "mechanisms.sqlite")
+    source = source_mechanism()
+    repo.admit(source)
+    current = reactor_context(0)
+
+    assert repo.find_applicable(current) == (source,)
+    assert repo.find_transfer_candidates(current) == ()
+
 def test_transfer_candidates_exclude_deprecated_latest_version(
     tmp_path: Path,
 ) -> None:
