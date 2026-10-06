@@ -259,7 +259,11 @@ class ReactorLabScientificSidecar:
                     continue
                 if "(activated)" in before.lower():
                     continue
-                if "(activated)" not in after.lower():
+                if "(activated)" in after.lower():
+                    success = True
+                elif "(uncalibrated)" in after.lower():
+                    success = False
+                else:
                     continue
                 event = ReactorValidationEvent(
                     event_id=(
@@ -271,7 +275,7 @@ class ReactorLabScientificSidecar:
                     target_reactor_uuid=prediction.target_reactor_uuid,
                     predicted_frequency=prediction.predicted_frequency,
                     validation_step=step,
-                    success=True,
+                    success=success,
                 )
                 self._validated.add(key)
                 events.append(event)
