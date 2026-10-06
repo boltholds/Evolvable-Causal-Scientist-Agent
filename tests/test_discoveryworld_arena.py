@@ -332,7 +332,7 @@ def test_progressive_transfer_has_no_future_seed_leakage(
                 mechanism_id=f"learned-{config.seed}",
                 version=1,
                 kind=MechanismKind.SYMBOLIC_RULE,
-                status=MechanismStatus.ADMITTED,
+                status=EpistemicStatus.ADMITTED,
                 representation_artifact_id="reactor-rule:sha256:" + str(config.seed) * 64,
                 scope=MechanismScope(
                     context_ids=(reactor_context(config.seed).context_id,),
@@ -341,7 +341,7 @@ def test_progressive_transfer_has_no_future_seed_leakage(
                     task_ids=("reactor-lab",),
                     required_assumptions=("public-observation-only", "linear-family"),
                 ),
-                transfer=MechanismTransferStatus.CONTEXT_SPECIALIZED,
+                transfer=TransferStatus.CONTEXT_SPECIALIZED,
             )
             repository.admit(mechanism)
             admitted = (mechanism,)
