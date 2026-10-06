@@ -189,20 +189,63 @@ Dreamer disagreement with symbolic models is evidence for model repair, not caus
 
 ## 4. Mechanism library
 
-The mechanism library stores reusable, versioned components rather than whole monolithic world models only.
+The mechanism library is the long-term scientific memory for reusable mechanisms.
 
-A mechanism should carry:
+ECSA owns the **mechanism schema, admission rules, applicability semantics, and typed scientific relations**. It does not own a second artifact database or generic lineage engine. Persistence/versioned metadata/lineage are delegated through a `MechanismRepository` boundary; the first planned backend is ML Metadata (MLMD).
 
-- identity/version;
-- executable or declarative representation;
+The authoritative contract is [MECHANISM_LIBRARY.md](MECHANISM_LIBRARY.md).
+
+A mechanism record carries, at minimum:
+
+- stable identity and immutable version;
+- mechanism kind;
+- epistemic status;
+- executable/declarative representation artifact reference;
+- explicit scope/context/regime constraints;
+- transfer status;
 - assumptions;
-- scope/context;
-- parameters;
+- parameters/specializations;
 - supporting and contradicting evidence;
 - provenance;
-- relationships to specialized/parent mechanisms.
+- typed relations such as `ABSTRACTED_FROM`, `SPECIALIZES`, `SUPERSEDES`, and `COMPOSED_OF`.
 
-A mechanism proposed by compression or synthesis becomes reusable only after validation.
+Initial epistemic statuses are:
+
+- `CANDIDATE`;
+- `QUALIFIED`;
+- `ADMITTED`;
+- `DEPRECATED`.
+
+Initial transfer semantics are:
+
+- `SHARED`;
+- `CONTEXT_SPECIALIZED`;
+- `SPLIT`.
+
+Compression, synthesis, or repeated occurrence is not sufficient for admission.
+
+Examples:
+
+- a DreamCoder program must pass prospective validation before qualification/admission;
+- a Stitch abstraction must be supported by qualified source mechanisms and transfer evidence before being treated as reusable across contexts;
+- a TTT state feature requires a state-aliasing witness;
+- a causal mechanism preserves the inference/identification semantics of its causal backend.
+
+Applicability is explicit. An admitted mechanism is returned to a runtime consumer only if its scope and assumptions match the current context/regime. Unknown applicability requests more evidence rather than silently assuming transfer.
+
+Individual engines receive **runtime projections** of applicable mechanisms. For example, DreamCoder Grammar is a projection of applicable program mechanisms, not the source of truth for long-term scientific memory.
+
+The ECSA core depends on a small repository protocol:
+
+```python
+class MechanismRepository(Protocol):
+    def admit(...): ...
+    def get(...): ...
+    def find_applicable(...): ...
+    def lineage(...): ...
+```
+
+MLMD-specific protobuf types, IDs, and storage configuration must remain behind the concrete repository adapter.
 
 ## 5. Runtime flow
 
