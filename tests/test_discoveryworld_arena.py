@@ -447,3 +447,39 @@ def test_policy_factory_must_return_policy() -> None:
             factory,
             {"model": "deterministic-test"},
         )
+
+
+
+def test_real_progressive_smoke_all_official_seeds(
+    tmp_path: Path,
+) -> None:
+    factory = load_policy_factory(
+        "tests.support.discoveryworld_policy:create_policy"
+    )
+
+    result = run_progressive_transfer(
+        seeds=(0, 1, 2, 3, 4),
+        policy_factory=factory,
+        policy_config={"model": "deterministic-test"},
+        output_dir=tmp_path / "real-smoke",
+        max_steps=1,
+    )
+
+    assert [pair.seed for pair in result.pairs] == [0, 1, 2, 3, 4]
+    for pair in result.pairs:
+        assert pair.cold.episode.evaluation.steps == 1
+        assert pair.reuse.episode.evaluation.steps == 1
+        assert (
+            tmp_path
+            / "real-smoke"
+            / f"seed-{pair.seed}"
+            / "cold"
+            / "final_scorecard.json"
+        ).exists()
+        assert (
+            tmp_path
+            / "real-smoke"
+            / f"seed-{pair.seed}"
+            / "reuse"
+            / "final_scorecard.json"
+        ).exists()
