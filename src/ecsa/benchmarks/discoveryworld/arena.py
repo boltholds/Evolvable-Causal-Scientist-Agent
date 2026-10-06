@@ -32,6 +32,7 @@ from .reactor_lab import (
     ReactorLabScientificSidecar,
     ReactorRuleArtifactStore,
     build_admitted_reactor_mechanism,
+    measurement_action_key,
     reactor_context,
 )
 from .runlog import ArenaRunWriter
@@ -155,6 +156,16 @@ def run_episode(
                 run_metrics.record_candidate_tested(ref)
                 tested_transfer_refs.add(ref)
 
+        measurement_key = measurement_action_key(
+            pre,
+            decision.action,
+        )
+        if measurement_key is not None:
+            run_metrics.record_measurement(
+                instrument_uuid=measurement_key[0],
+                crystal_uuid=measurement_key[1],
+            )
+
         writer.append_jsonl(
             "actions.jsonl",
             {
@@ -180,10 +191,6 @@ def run_episode(
             post_observation=post,
         )
         for measurement in measurements:
-            run_metrics.record_measurement(
-                instrument_uuid=measurement.instrument_uuid,
-                crystal_uuid=measurement.crystal_uuid,
-            )
             writer.append_jsonl(
                 "scientific_events.jsonl",
                 {"kind": "measurement", "measurement": measurement},
