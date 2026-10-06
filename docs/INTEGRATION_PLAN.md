@@ -377,6 +377,27 @@ Runtime backends consume filtered projections. DreamCoder Grammar, a BCS model
 set, or planner operators are therefore **views of applicable mechanisms**,
 not the long-term source of truth.
 
+**Runtime projection status: first executable layer integrated.**
+
+- `MechanismRuntimeProjector` exposes typed artifact-only views for applicable
+  `CAUSAL_MODEL`, `STATE_FEATURE`, and `SYMBOLIC_RULE` mechanisms.
+  Concrete BCS/state/planner hydration remains owned by those backends rather
+  than being fabricated in the mechanism library.
+- `DreamCoderGrammarProjector` resolves applicable `PROGRAM` mechanisms,
+  including qualified `program-mechanism` artifacts, back to the exact
+  source DreamCoder program.
+- `DreamCoderRepairEngine` accepts those projected programs as a runtime
+  library, and the isolated worker adds them to the upstream Grammar as real
+  `Invented` productions.
+- An end-to-end reuse test learns and qualifies a mechanism in one context,
+  admits it with shared scope covering a second context, and requires warm
+  DreamCoder synthesis in the second context to enumerate strictly fewer
+  programs than cold-start synthesis.
+
+This verifies computational reuse. The stronger transfer goal—fewer
+environment interventions/experiments in a new context—remains an arena
+experiment rather than being inferred from synthesis speed.
+
 Current repository acceptance:
 
 1. admitted mechanisms and exact representation/evidence/provenance inputs are
@@ -389,10 +410,14 @@ Current repository acceptance:
 5. deprecation creates a new immutable `DEPRECATED` version and preserves the
    prior admission lineage;
 6. implicit global scope is rejected;
-7. the core remains isolated from MLMD protobuf/runtime types.
+7. the core remains isolated from MLMD protobuf/runtime types;
+8. applicable program mechanisms can be projected into a real DreamCoder
+   Grammar without making that Grammar authoritative;
+9. typed artifact views for causal models, state features, and symbolic rules
+   preserve mechanism kind boundaries.
 
-Projection of repository-selected mechanisms back into execution backends is
-the next layer.
+Backend-specific BCS model hydration and symbolic planner-operator hydration
+remain future adapter work.
 
 Acceptance:
 
