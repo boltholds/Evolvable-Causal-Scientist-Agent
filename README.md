@@ -61,7 +61,11 @@ The executable path in `main` now includes:
 - a prospective held-out qualification gate: synthesis evidence and validation evidence must be disjoint before a program can become a `TheoryRef`;
 - coherent small-prior admission of qualified program mechanisms into the same posterior as BCS/TTT-derived theories;
 - information-directed selection over experiments where causal and synthesized-program theories disagree;
-- end-to-end tests using real BCS models, a real Java/LearnLib TTT learner, the external BOCPD implementation, and the pinned DreamCoder core.
+- a real **Stitch** abstraction-learning backend, pinned to the MIT Rust core at `mlb2251/stitch`;
+- Stitch input is restricted to `QualifiedProgramMechanism` values that already passed prospective validation; raw DreamCoder synthesis outputs are not eligible for library learning;
+- content-addressed Stitch abstraction artifacts carrying the learned body/arity, utility, compression ratio, number of uses, original programs, rewritten programs, and exact source mechanism provenance;
+- a cross-mechanism reuse gate: one qualified mechanism alone yields no reusable abstraction proposal;
+- end-to-end tests using real BCS models, a real Java/LearnLib TTT learner, the external BOCPD implementation, the pinned DreamCoder core, and the real Rust Stitch compressor.
 
 The TTT integration does **not** vendor the BCS TTT implementation. The adapter checks out the pinned BCS source revision, invokes its existing bridge, and records the learned machine as an ECSA artifact.
 
@@ -87,6 +91,8 @@ TTT, BOCPD, and DreamCoder are now integrated as distinct repair paths: TTT prop
 The current DreamCoder integration intentionally starts with one Boolean-domain adapter. A synthesized program is no longer admitted from training fit alone: it must make a correct prospective prediction on held-out evidence that was not used during synthesis. Only then is a content-addressed program-mechanism theory created and assigned explicit small prior mass. The adapter can subsequently compete in the same IDS experiment set as BCS theories.
 
 This proves the repair → prediction → validation → admission loop for one domain, but it does not claim a universal DSL or automatic causal semantics for arbitrary synthesized programs.
+
+Qualified program mechanisms can now enter Stitch. Stitch learns recurring lambda-calculus structure across those mechanisms and emits `StitchAbstractionProposal` values in the `ABSTRACTION_TRANSFER` family. These proposals are **candidate reusable mechanisms, not causal laws**: compression and multi-use support establish reusable structure, while transfer/invariance must still be tested separately before library admission.
 
 The project still does **not** claim that the remaining external engines are integrated or interchangeable. Each one will be connected behind an explicit adapter and validated experimentally.
 
