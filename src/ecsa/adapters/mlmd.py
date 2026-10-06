@@ -162,6 +162,82 @@ class MLMDMechanismRepository(MechanismRepository):
             )
         )
 
+    def find_transfer_candidates(
+        self,
+        context: ApplicabilityContext,
+    ) -> tuple[MechanismRecord, ...]:
+        if not isinstance(context, ApplicabilityContext):
+            raise ValueError("typed ApplicabilityContext required")
+        if (
+            context.context_id is None
+            or context.regime_id is None
+            or context.domain_id is None
+            or context.task_id is None
+            or not context.assumptions
+        ):
+            raise ValueError(
+                "transfer candidate queries require explicit context, regime, "
+                "domain, task, and assumptions"
+            )
+
+        latest: dict[str, MechanismRecord] = {}
+        for artifact in self._store.get_artifacts_by_type(
+            _MECHANISM_TYPE
+        ):
+            record = self._decode_record(artifact)
+            previous = latest.get(record.mechanism_id)
+            if previous is None or record.version > previous.version:
+                latest[record.mechanism_id] = record
+
+        def matches_dimension(
+            allowed: tuple[str, ...],
+            actual: str,
+        ) -> bool:
+            return not allowed or actual in allowed
+
+        candidates = [
+            record
+            for record in latest.values()
+            if (
+                record.status is MechanismStatus.ADMITTED
+                and matches_dimension(
+                    record.scope.regime_ids,
+                    context.regime_id,
+                )
+                and matches_dimension(
+                    record.scope.domain_ids,
+                    context.domain_id,
+                )
+                and matches_dimension(
+                    record.scope.task_ids,
+                    context.task_id,
+                )
+                and set(record.scope.required_assumptions).issubset(
+                    context.assumptions
+                )
+            )
+        ]
+
+        superseded = {
+            relation.target
+            for record in candidates
+            for relation in record.relations
+            if relation.kind is MechanismRelationKind.SUPERSEDES
+        }
+        return tuple(
+            sorted(
+                (
+                    record
+                    for record in candidates
+                    if record.ref not in superseded
+                ),
+                key=lambda item: (
+                    item.mechanism_id,
+                    item.version,
+                ),
+            )
+        )
+
     def lineage(
         self,
         mechanism: MechanismVersionRef | str,
