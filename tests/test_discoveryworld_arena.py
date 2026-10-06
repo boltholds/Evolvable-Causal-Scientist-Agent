@@ -15,7 +15,7 @@ from ecsa.benchmarks.discoveryworld.reactor_lab import (
     reactor_context,
 )
 from ecsa.benchmarks.discoveryworld import arena as arena_module
-from ecsa.benchmarks.discoveryworld.arena import run_episode
+from ecsa.benchmarks.discoveryworld.arena import run_episode, run_progressive_transfer
 from ecsa.mechanisms import (
     EpistemicStatus,
     MechanismKind,
@@ -304,3 +304,66 @@ def test_episode_stops_at_max_steps_when_environment_is_not_done(
 
     assert result.evaluation.steps == 2
     assert len(policy.contexts) == 2
+
+
+
+def test_progressive_transfer_has_no_future_seed_leakage(
+    tmp_path: Path,
+) -> None:
+    calls = []
+
+    def policy_factory(config_dict):
+        return RecordingPolicy([])
+
+    def episode_runner(*, config, policy, repository, output_dir):
+        starting = len(repository.find_transfer_candidates(reactor_context(config.seed)))
+        calls.append((config.seed, output_dir.name, starting))
+        admitted = ()
+        if output_dir.name == "reuse":
+            mechanism = MechanismRecord(
+                mechanism_id=f"learned-{config.seed}",
+                version=1,
+                kind=MechanismKind.SYMBOLIC_RULE,
+                status=MechanismStatus.ADMITTED,
+                representation_artifact_id="reactor-rule:sha256:" + str(config.seed) * 64,
+                scope=MechanismScope(
+                    context_ids=(reactor_context(config.seed).context_id,),
+                    regime_ids=("normal",),
+                    domain_ids=("discoveryworld",),
+                    task_ids=("reactor-lab",),
+                    required_assumptions=("public-observation-only", "linear-family"),
+                ),
+                transfer=MechanismTransferStatus.CONTEXT_SPECIALIZED,
+            )
+            repository.admit(mechanism)
+            admitted = (mechanism,)
+        return arena_module.ArenaEpisodeResult(
+            config=config,
+            evaluation=DiscoveryWorldEvaluation(
+                completed_successfully=False,
+                score_normalized=0.0,
+                steps=1,
+                scorecard=[],
+            ),
+            admitted_mechanisms=admitted,
+            measurement_count=0,
+        )
+
+    result = run_progressive_transfer(
+        seeds=(0, 1, 2, 3, 4),
+        policy_factory=policy_factory,
+        policy_config={"model": "deterministic"},
+        output_dir=tmp_path,
+        max_steps=1,
+        episode_runner=episode_runner,
+    )
+
+    assert [pair.seed for pair in result.pairs] == [0, 1, 2, 3, 4]
+    assert result.pairs[0].cold.starting_mechanism_count == 0
+    assert result.pairs[0].reuse.starting_mechanism_count == 0
+    assert all(pair.cold.starting_mechanism_count == 0 for pair in result.pairs)
+    assert [pair.reuse.starting_mechanism_count for pair in result.pairs] == [0, 1, 2, 3, 4]
+    assert all(
+        pair.cold.policy_config_hash == pair.reuse.policy_config_hash
+        for pair in result.pairs
+    )
