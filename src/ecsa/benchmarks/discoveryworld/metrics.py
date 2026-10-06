@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from statistics import fmean
+
+from .contracts import TransferArenaResult
 
 
 def compute_transfer_gain(*, cold: int, reuse: int) -> float | None:
@@ -79,3 +82,68 @@ class ReactorRunMetricsAccumulator:
     def _validate_ref(ref: str) -> None:
         if not isinstance(ref, str) or not ref:
             raise ValueError("mechanism reference must be a nonempty string")
+
+
+
+@dataclass(frozen=True)
+class SeedTransferMetrics:
+    seed: int
+    cold_measurement_actions: int
+    reuse_measurement_actions: int
+    cold_steps: int
+    reuse_steps: int
+    measurement_transfer_gain: float | None
+    step_transfer_gain: float | None
+
+
+@dataclass(frozen=True)
+class TransferSummary:
+    per_seed: tuple[SeedTransferMetrics, ...]
+    mean_measurement_transfer_gain: float | None
+    mean_step_transfer_gain: float | None
+
+
+def summarize_transfer(result: TransferArenaResult) -> TransferSummary:
+    per_seed = tuple(
+        SeedTransferMetrics(
+            seed=pair.seed,
+            cold_measurement_actions=pair.cold.episode.measurement_count,
+            reuse_measurement_actions=pair.reuse.episode.measurement_count,
+            cold_steps=pair.cold.episode.evaluation.steps,
+            reuse_steps=pair.reuse.episode.evaluation.steps,
+            measurement_transfer_gain=compute_transfer_gain(
+                cold=pair.cold.episode.measurement_count,
+                reuse=pair.reuse.episode.measurement_count,
+            ),
+            step_transfer_gain=compute_transfer_gain(
+                cold=pair.cold.episode.evaluation.steps,
+                reuse=pair.reuse.episode.evaluation.steps,
+            ),
+        )
+        for pair in result.pairs
+    )
+
+    transfer_rows = tuple(item for item in per_seed if item.seed != 0)
+    measurement_values = tuple(
+        item.measurement_transfer_gain
+        for item in transfer_rows
+        if item.measurement_transfer_gain is not None
+    )
+    step_values = tuple(
+        item.step_transfer_gain
+        for item in transfer_rows
+        if item.step_transfer_gain is not None
+    )
+    return TransferSummary(
+        per_seed=per_seed,
+        mean_measurement_transfer_gain=(
+            fmean(measurement_values)
+            if measurement_values
+            else None
+        ),
+        mean_step_transfer_gain=(
+            fmean(step_values)
+            if step_values
+            else None
+        ),
+    )
