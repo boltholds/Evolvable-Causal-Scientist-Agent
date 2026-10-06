@@ -158,7 +158,30 @@ Use for significant-event and candidate-variable proposals from richer trajector
 
 ### DreamCoder
 
+**Status: integrated for the first explicit Boolean mechanism domain.**
+
 Use when an executable mechanism/program must be synthesized.
+
+The current backend pins `ellisk42/ec` at a fixed revision and reuses
+DreamCoder's own type system, `Primitive`, `Task`, `Grammar`, and
+`Grammar.enumeration()`. It does not install DreamCoder's historical full
+requirements stack. An isolated worker loads only the core submodules from the
+pinned source tree, bypassing the legacy package initializer that eagerly
+imports unrelated recognition, regex, tower, logo, and other domain modules.
+
+The first domain adapter accepts typed Boolean input/output examples plus an
+explicit primitive set. A synthesis run emits a content-addressed
+`PROGRAM_MECHANISM` proposal containing the exact program, log prior / MDL,
+DSL, examples, enumeration count, search budget, and upstream revision.
+
+The acceptance test synthesizes XOR behavior from the restricted DSL
+`{not, and, or}`, so the target operation is not supplied as a primitive.
+A negative-control DSL containing only `and` yields no proposal rather than
+inventing unsupported behavior.
+
+Synthesized programs are proposals, not automatically accepted causal laws.
+They must later receive a prediction/causal projection and compete against
+existing theories through prospective evidence before admission.
 
 Each engine returns proposals with provenance; it does not directly overwrite the current theory population.
 
