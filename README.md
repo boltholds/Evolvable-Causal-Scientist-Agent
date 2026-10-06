@@ -65,7 +65,11 @@ The executable path in `main` now includes:
 - Stitch input is restricted to `QualifiedProgramMechanism` values that already passed prospective validation; raw DreamCoder synthesis outputs are not eligible for library learning;
 - content-addressed Stitch abstraction artifacts carrying the learned body/arity, utility, compression ratio, number of uses, original programs, rewritten programs, and exact source mechanism provenance;
 - a cross-mechanism reuse gate: one qualified mechanism alone yields no reusable abstraction proposal;
-- end-to-end tests using real BCS models, a real Java/LearnLib TTT learner, the external BOCPD implementation, the pinned DreamCoder core, and the real Rust Stitch compressor.
+- an **official VARIO** transfer-validation backend using the authors' August 2022 R source archive, checksum-pinned at runtime rather than vendored;
+- cross-context mechanism partitioning with the official `Vario_Pi_search` path and VARIO's own conservative invariance correction for the fully invariant case;
+- an explicit ECSA transfer-scope projection from VARIO partitions: one context group → `SHARED`, multiple groups with reuse → `CONTEXT_SPECIALIZED`, all singleton groups → `SPLIT`;
+- content-addressed VARIO transfer artifacts binding the Stitch abstraction, context evidence hashes, official source checksum, learned partition, MDL score, and ECSA scope;
+- end-to-end tests using real BCS models, a real Java/LearnLib TTT learner, the external BOCPD implementation, the pinned DreamCoder core, the real Rust Stitch compressor, and the official VARIO R implementation.
 
 The TTT integration does **not** vendor the BCS TTT implementation. The adapter checks out the pinned BCS source revision, invokes its existing bridge, and records the learned machine as an ECSA artifact.
 
@@ -77,6 +81,8 @@ Run the full tests:
 
 ```bash
 python -m pip install -e '.[test,bcs,bocpd,dreamcoder]'
+# VARIO tests additionally require R and the R packages:
+# rlist, combinat, dplyr, car
 pytest -q
 ```
 
@@ -92,7 +98,11 @@ The current DreamCoder integration intentionally starts with one Boolean-domain 
 
 This proves the repair → prediction → validation → admission loop for one domain, but it does not claim a universal DSL or automatic causal semantics for arbitrary synthesized programs.
 
-Qualified program mechanisms can now enter Stitch. Stitch learns recurring lambda-calculus structure across those mechanisms and emits `StitchAbstractionProposal` values in the `ABSTRACTION_TRANSFER` family. These proposals are **candidate reusable mechanisms, not causal laws**: compression and multi-use support establish reusable structure, while transfer/invariance must still be tested separately before library admission.
+Qualified program mechanisms can now enter Stitch. Stitch learns recurring lambda-calculus structure across those mechanisms and emits `StitchAbstractionProposal` values in the `ABSTRACTION_TRANSFER` family. These proposals are **candidate reusable mechanisms, not causal laws**: compression and multi-use support establish reusable structure.
+
+VARIO now supplies the next gate. Given numeric evidence from multiple contexts, the adapter runs the official `Vario_Pi_search` implementation and records the discovered context partition. ECSA maps that partition to transfer scope (`SHARED`, `CONTEXT_SPECIALIZED`, or `SPLIT`). This scope vocabulary is ECSA's integration contract, not terminology claimed from the VARIO paper.
+
+The official VARIO archive does not contain a license file. ECSA therefore does not vendor or redistribute its R source: the adapter downloads the authors' archive at runtime, verifies the frozen SHA-256, executes it externally, and records this licensing/provenance boundary in every transfer artifact.
 
 The project still does **not** claim that the remaining external engines are integrated or interchangeable. Each one will be connected behind an explicit adapter and validated experimentally.
 
