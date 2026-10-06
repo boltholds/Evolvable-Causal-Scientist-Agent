@@ -107,6 +107,29 @@ class ScienceKernel:
             key=lambda score: (-score.information_gain_bits, score.experiment_id),
         )
 
+    def admit_theory(
+        self,
+        posterior: TheoryPosterior,
+        theory,
+        *,
+        prior_mass: float,
+    ) -> TheoryPosterior:
+        if not isinstance(prior_mass, (int, float)) or isinstance(prior_mass, bool):
+            raise ValueError("prior_mass must be numeric")
+        prior_mass = float(prior_mass)
+        if not 0.0 < prior_mass < 1.0:
+            raise ValueError("prior_mass must be strictly between zero and one")
+        if posterior.probability(theory.theory_id) > 0.0:
+            raise ValueError(f"theory already admitted: {theory.theory_id}")
+        retained = 1.0 - prior_mass
+        return TheoryPosterior(
+            tuple(
+                (theory_id, probability * retained)
+                for theory_id, probability in posterior.probabilities
+            )
+            + ((theory.theory_id, prior_mass),)
+        )
+
     def update(
         self,
         posterior: TheoryPosterior,
