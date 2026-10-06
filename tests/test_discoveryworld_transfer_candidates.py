@@ -9,6 +9,8 @@ from ecsa.mechanisms import (
     EpistemicStatus,
     MechanismKind,
     MechanismRecord,
+    MechanismRelation,
+    MechanismRelationKind,
     MechanismScope,
     TransferStatus,
 )
@@ -164,3 +166,39 @@ def test_transfer_candidate_must_match_non_context_scope(
 
     assert repo.find_transfer_candidates(wrong_domain) == ()
     assert repo.find_transfer_candidates(missing_assumption) == ()
+
+
+
+def test_superseded_source_is_not_returned_when_replacement_is_target_applicable(
+    tmp_path: Path,
+) -> None:
+    repo = MLMDMechanismRepository.sqlite(tmp_path / "mechanisms.sqlite")
+    source = source_mechanism()
+    repo.admit(source)
+
+    target = reactor_context(1)
+    replacement = MechanismRecord(
+        mechanism_id="target-reactor-law",
+        version=1,
+        kind=MechanismKind.SYMBOLIC_RULE,
+        epistemic_status=EpistemicStatus.ADMITTED,
+        representation_artifact="reactor-rule:sha256:" + "c" * 64,
+        scope=MechanismScope(
+            context_ids=(target.context_id,),
+            regime_ids=(target.regime_id,),
+            domain_ids=(target.domain_id,),
+            task_ids=(target.task_id,),
+            required_assumptions=target.assumptions,
+        ),
+        transfer_status=TransferStatus.CONTEXT_SPECIALIZED,
+        relations=(
+            MechanismRelation(
+                MechanismRelationKind.SUPERSEDES,
+                source.ref,
+            ),
+        ),
+    )
+    repo.admit(replacement)
+
+    assert repo.find_applicable(target) == (replacement,)
+    assert repo.find_transfer_candidates(target) == ()
