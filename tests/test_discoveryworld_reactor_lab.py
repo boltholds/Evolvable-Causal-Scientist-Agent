@@ -12,6 +12,7 @@ from ecsa.benchmarks.discoveryworld.reactor_lab import (
     ReactorMechanismHypothesis,
     ReactorRuleArtifactStore,
     build_admitted_reactor_mechanism,
+    measurement_action_key,
     parse_public_measurement,
     reactor_context,
 )
@@ -99,6 +100,18 @@ def observation(
         }
     }
 
+
+
+
+def test_measurement_action_key_counts_use_even_before_result_parsing() -> None:
+    assert measurement_action_key(
+        observation(),
+        {"action": "USE", "arg1": 101, "arg2": 202},
+    ) == (101, 202)
+    assert measurement_action_key(
+        observation(),
+        {"action": "PICKUP", "arg1": 202},
+    ) is None
 
 def test_record_transition_uses_only_public_use_result() -> None:
     sidecar = ReactorLabScientificSidecar()
