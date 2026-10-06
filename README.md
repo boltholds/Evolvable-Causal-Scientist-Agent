@@ -35,7 +35,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the architecture contract a
 
 ## Current executable milestone
 
-The first vertical slice now lives in `main`:
+The executable path in `main` now includes:
 
 - immutable theory / experiment / observation contracts;
 - Bayesian posterior updates over competing theories;
@@ -43,9 +43,14 @@ The first vertical slice now lives in `main`:
 - automatic selection of the most discriminating experiment;
 - explicit `PopulationAnomaly` when the whole current theory population assigns zero support to an observation;
 - a thin adapter into the existing Behavioral-Causal-State `evaluate()` API;
-- an end-to-end test using two real BCS `BooleanCore` theories.
+- `TheorySpaceExpansionRequest` and multi-engine repair fan-out with provenance;
+- a real **LearnLib TTT** repair backend that reuses the existing BCS bridge at the pinned BCS revision;
+- content-addressed persistence of the accepted Mealy hypothesis;
+- end-to-end tests using real BCS models and a real Java/LearnLib TTT learner.
 
-The BCS repository is pinned as an optional Git dependency rather than copied into this project.
+The TTT integration does **not** vendor the BCS TTT implementation. The adapter checks out the pinned BCS source revision, invokes its existing bridge, and records the learned machine as an ECSA artifact.
+
+A TTT machine is currently emitted as a `TheoryProposal` with `STATE_MEMORY` provenance. It is intentionally **not auto-admitted into the causal posterior yet**: admission requires a prediction adapter that can score the proposal against the same experiment/evidence space as the active causal theories. This prevents a behavioral automaton from being treated as a causal model merely because it was learned successfully.
 
 Run the full tests:
 
@@ -54,7 +59,7 @@ python -m pip install -e '.[test,bcs]'
 pytest -q
 ```
 
-Run the minimal example:
+Run the minimal causal example:
 
 ```bash
 python examples/first_vertical_slice.py
