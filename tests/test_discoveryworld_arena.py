@@ -582,6 +582,25 @@ def test_real_progressive_smoke_all_official_seeds(
             / "final_scorecard.json"
         ).exists()
 
+        for arm in ("cold", "reuse"):
+            run_meta = json.loads(
+                (
+                    tmp_path
+                    / "real-smoke"
+                    / f"seed-{pair.seed}"
+                    / arm
+                    / "run.json"
+                ).read_text()
+            )
+            assert run_meta["arm"] == arm
+            assert run_meta["policy_config_hash"] == result.policy_config_hash
+            assert run_meta["discoveryworld_revision"] == (
+                "fd591323920be0d3786ef350955de1945aa571e5"
+            )
+            assert len(run_meta["ecsa_revision"]) == 40
+            assert run_meta["timestamp_utc"].endswith("Z")
+            assert run_meta["mechanism_repository"] == "MLMDMechanismRepository"
+
 
 
 def test_transfer_summary_reports_per_seed_and_seed1_to4_aggregate(
