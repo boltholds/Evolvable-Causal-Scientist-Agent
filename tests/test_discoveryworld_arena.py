@@ -17,7 +17,12 @@ from ecsa.benchmarks.discoveryworld.reactor_lab import (
     reactor_context,
 )
 from ecsa.benchmarks.discoveryworld import arena as arena_module
-from ecsa.benchmarks.discoveryworld.arena import run_episode, run_progressive_transfer
+from ecsa.benchmarks.discoveryworld.arena import (
+    load_policy_factory,
+    policy_config_hash,
+    run_episode,
+    run_progressive_transfer,
+)
 from ecsa.benchmarks.discoveryworld.metrics import ReactorRunMetricsAccumulator, compute_transfer_gain
 from ecsa.mechanisms import (
     EpistemicStatus,
@@ -402,3 +407,43 @@ def test_transfer_candidate_outcomes_are_separate_counters() -> None:
     assert snapshot.transfer_candidates_accepted == 1
     assert snapshot.transfer_candidates_rejected == 1
     assert snapshot.false_transfer_events == 1
+
+
+
+def test_policy_factory_loader_and_config_hash() -> None:
+    factory = load_policy_factory(
+        "tests.support.discoveryworld_policy:create_policy"
+    )
+    policy = factory({"model": "deterministic-test"})
+    assert isinstance(policy, arena_module.DiscoveryWorldActionPolicy)
+
+    left = policy_config_hash({"b": 2, "a": 1})
+    right = policy_config_hash({"a": 1, "b": 2})
+    assert left == right
+
+
+@pytest.mark.parametrize(
+    "path,exception",
+    (
+        ("not-a-factory-path", ValueError),
+        ("tests.support.discoveryworld_policy:missing", ValueError),
+        ("tests.support.discoveryworld_policy:not_callable", TypeError),
+    ),
+)
+def test_policy_factory_loader_rejects_invalid_factories(
+    path: str,
+    exception: type[Exception],
+) -> None:
+    with pytest.raises(exception):
+        load_policy_factory(path)
+
+
+def test_policy_factory_must_return_policy() -> None:
+    factory = load_policy_factory(
+        "tests.support.discoveryworld_policy:create_not_policy"
+    )
+    with pytest.raises(TypeError):
+        arena_module._create_policy(
+            factory,
+            {"model": "deterministic-test"},
+        )
