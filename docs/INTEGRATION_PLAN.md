@@ -210,7 +210,38 @@ A population anomaly can produce multiple typed repair candidates from different
 
 ### Stitch
 
+**Status: integrated with the pinned MIT Rust Stitch core.**
+
 Run over validated/surviving programmatic mechanisms to propose common abstractions.
+
+The current backend pins `mlb2251/stitch` at revision
+`350804b7b35807c78bd21c313785ae5152ae2985` and builds/runs the upstream
+`compress` binary. It consumes only `QualifiedProgramMechanism` values:
+programs that have already passed the DreamCoder held-out prospective
+validation gate. Raw synthesis outputs are rejected by the adapter boundary.
+
+The upstream `programs-list` format is used directly, so DreamCoder lambda
+program strings are not translated into a new internal language. For each
+learned abstraction ECSA stores a content-addressed artifact with:
+
+- exact upstream revision and Stitch arguments;
+- source theory IDs and source DreamCoder program artifact IDs;
+- original and rewritten programs;
+- learned abstraction body and arity;
+- utility, number of uses, final cost, and compression ratios.
+
+A single qualified mechanism returns no abstraction proposal: the current
+ECSA contract reserves Stitch for cross-mechanism reuse. The positive
+acceptance test runs the real Rust compressor over three qualified mechanism
+programs sharing repeated structure and requires positive utility,
+multi-use support, and corpus compression.
+
+A Stitch abstraction is a `StitchAbstractionProposal` in the
+`ABSTRACTION_TRANSFER` family, not a causal `TheoryRef`. Compression proves
+repeated program structure, not causal invariance. VARIO or equivalent
+cross-context validation must decide whether the abstraction is shared,
+parameter-specialized, or split before it becomes a reusable mechanism in the
+library.
 
 ### VARIO
 
