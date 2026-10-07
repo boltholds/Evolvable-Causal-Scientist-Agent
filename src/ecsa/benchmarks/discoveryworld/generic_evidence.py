@@ -92,6 +92,7 @@ def extract_public_scalar_evidence(
     action: ActionPacket,
     post_observation: dict[str, JSONValue],
     dialog_entity_ids: tuple[int, ...] = (),
+    source_names: frozenset[str] | None = None,
 ) -> tuple[GenericScalarEvidence, ...]:
     if type(step) is not int or step < 0:
         raise ValueError("step must be nonnegative")
@@ -104,6 +105,8 @@ def extract_public_scalar_evidence(
     found: list[GenericScalarEvidence] = []
 
     for source_name, text in _public_text_sources(post_observation):
+        if source_names is not None and source_name not in source_names:
+            continue
         for line_index, raw_line in enumerate(text.splitlines()):
             line = raw_line.strip()
             if not line:
@@ -169,12 +172,20 @@ class GenericEvidenceLedger:
         if post_dialog and not pre_dialog and direct_ids:
             self._dialog_entity_ids = direct_ids
 
+        pre_sources = dict(_public_text_sources(pre_observation))
+        post_sources = dict(_public_text_sources(post_observation))
+        changed_sources = frozenset(
+            source_name
+            for source_name, text in post_sources.items()
+            if pre_sources.get(source_name) != text
+        )
         created = extract_public_scalar_evidence(
             step=step,
             context_id=context_id,
             action=action,
             post_observation=post_observation,
             dialog_entity_ids=self._dialog_entity_ids,
+            source_names=changed_sources,
         )
         unique: list[GenericScalarEvidence] = []
         for item in created:
