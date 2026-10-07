@@ -21,6 +21,9 @@ The project is built around **integration of existing research systems rather th
 - **Fast Downward / TheoryCoder-style PDDL projection** — symbolic and hierarchical goal planning.
 - **DreamerV3** — learned latent dynamics and imagined trajectories for environments where exact symbolic rollout is insufficient.
 - **DiscoveryWorld** — pinned external scientific-agent environment for the first real cold-vs-reuse transfer arena.
+- **World Model Acquisition Kernel** — learns anonymous entity types, predicates, action schemas, preconditions/effects, and reusable structural world contracts from raw interaction traces instead of requiring benchmark-authored semantic action roles.
+- **MAcq LOCM + ECSA LOCM2** — optional action-model acquisition backends behind one ECSA learner protocol; MAcq is pinned as an optional dependency, while LOCM2 supplies multi-state-machine induction.
+- **Perception frontends** — structured public-object decoding today, with a backend-neutral Slot Attention boundary reserved for future object-centric visual perception without adding PyTorch to the core install.
 
 These components are not being discarded when another component overlaps with them. The architecture assigns each method a specific responsibility and removes duplicated ownership.
 
@@ -38,6 +41,9 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the architecture contract, 
 
 The executable path in `main` now includes:
 
+- **Arena B now exercises raw world-contract induction**: DiscoveryWorld raw observations/actions are converted into generic interaction transitions; LOCM2 proposals are canonicalized into world-contract hypotheses online, with no external LLM or Reactor-specific scientific sidecar in the autonomous path;
+- structural contract canonicalization is invariant to source action/object renaming in synthetic acceptance tests;
+- structured and fake Slot-Attention perception frontends lead to compatible downstream contract structure;
 - immutable theory / experiment / observation contracts;
 - Bayesian posterior updates over competing theories;
 - exact expected information gain for discrete experiment outcomes;
