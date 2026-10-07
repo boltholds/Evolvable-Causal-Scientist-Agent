@@ -113,11 +113,21 @@ class DiscoveryWorldEnvironmentAdapter:
         if type(success) is not bool:
             raise RuntimeError("DiscoveryWorld action result has no bool success")
         errors_raw = response.get("errors", ())
-        if not isinstance(errors_raw, (list, tuple)):
-            raise RuntimeError("DiscoveryWorld action errors must be a sequence")
+        # The pinned upstream returns an empty string for dialog actions
+        # while ordinary actions use a list. Normalize that API quirk here.
+        if errors_raw is None or errors_raw == "":
+            errors = ()
+        elif isinstance(errors_raw, str):
+            errors = (errors_raw,)
+        elif isinstance(errors_raw, (list, tuple)):
+            errors = tuple(str(error) for error in errors_raw)
+        else:
+            raise RuntimeError(
+                "DiscoveryWorld action errors must be a sequence or string"
+            )
         return DiscoveryWorldActionResult(
             success=success,
-            errors=tuple(str(error) for error in errors_raw),
+            errors=errors,
         )
 
     @property
