@@ -111,3 +111,20 @@ def test_raw_environment_module_has_no_semantic_role_map() -> None:
     source = inspect.getsource(module)
     assert "_ROLE_MAP" not in source
     assert "ActionRole" not in source
+
+
+
+def test_raw_adapter_loads_unfamiliar_scenario_without_semantic_changes() -> None:
+    env = DiscoveryWorldRawEnvironment.load(
+        scenario="Archaeology Dating",
+        difficulty="Normal",
+        seed=0,
+        max_steps=4,
+    )
+
+    raw = env.observe_raw()
+    schemas = env.list_raw_actions()
+
+    assert raw.step == 0
+    assert schemas
+    assert all(not hasattr(schema, "role") for schema in schemas)
