@@ -82,7 +82,7 @@ class AutonomousScientist:
                 for contract in contracts
             )
         )
-        return self.experiments.select(
+        return self.experiments.select_active(
             posterior=posterior,
             experiments=candidates,
         )
