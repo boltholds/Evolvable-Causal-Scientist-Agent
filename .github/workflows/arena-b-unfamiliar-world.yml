@@ -1,0 +1,26 @@
+name: arena-b-unfamiliar-world
+
+on:
+  push:
+    branches: [exp/arena-b-archaeology]
+
+concurrency:
+  group: arena-b-unfamiliar-world
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install -e '.[test,discoveryworld]'
+      - name: RED/GREEN acceptance
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+        run: |
+          pytest -q             tests/test_discoveryworld_raw_environment.py             tests/test_discoveryworld_arena_b.py
