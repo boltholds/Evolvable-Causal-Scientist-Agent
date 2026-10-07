@@ -309,6 +309,7 @@ def test_real_autonomous_seed0_reaches_generic_hypothesis(
         if event.get("kind") == "generic_hypothesis_frozen"
     ]
 
+    scientist = policy._scientist
     diagnostic = {
         "steps": result.evaluation.steps,
         "generic_evidence_count": len(generic_evidence),
@@ -319,6 +320,22 @@ def test_real_autonomous_seed0_reaches_generic_hypothesis(
                 if isinstance(event.get("kind"), str)
             }
         ),
+        "evidence": [
+            {
+                "action_name": event["evidence"]["action_name"],
+                "entity_ids": event["evidence"]["entity_ids"],
+                "feature_key": event["evidence"]["feature_key"],
+                "value": event["evidence"]["value"],
+                "raw_text": event["evidence"]["raw_text"],
+            }
+            for event in generic_evidence
+        ],
+        "labels": dict(sorted(scientist._labels.items())),
+        "historical_preferred": sorted(
+            scientist._historical_preferred
+        ),
+        "pair_trials": scientist._pair_trials,
+        "pair_type_counts": scientist._pair_type_counts,
         "last_actions": actions[-20:],
     }
 
