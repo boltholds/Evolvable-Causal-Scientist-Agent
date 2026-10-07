@@ -265,6 +265,26 @@ def _state_text(value: str) -> str:
     return " ".join(_STATE.findall(value)).lower()
 
 
+def public_state_is_preferred(label: str) -> bool:
+    state = _state_text(label)
+    if not state:
+        return False
+    words = _tokens(state)
+    return any(
+        word in {
+            "success",
+            "successful",
+            "complete",
+            "completed",
+            "ready",
+            "open",
+            "on",
+        }
+        or word.startswith("activat")
+        for word in words
+    )
+
+
 def _similarity(left: str, right: str) -> float:
     left_tokens = set(_tokens(left))
     right_tokens = set(_tokens(right))
@@ -1108,15 +1128,7 @@ class AutonomousScientist:
 
     @staticmethod
     def _preferred_state(label: str) -> bool:
-        state = _state_text(label)
-        if not state:
-            return False
-        words = _tokens(state)
-        return any(
-            word in {"success", "successful", "complete", "completed", "ready", "open", "on"}
-            or word.startswith("activat")
-            for word in words
-        )
+        return public_state_is_preferred(label)
 
     def _best_subject(
         self,
