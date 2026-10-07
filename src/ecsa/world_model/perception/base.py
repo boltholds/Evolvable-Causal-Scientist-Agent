@@ -28,12 +28,20 @@ class EntityObservation:
     source_identity: str | None
     features: tuple[ObservedFeature, ...]
     provenance_id: str
+    interaction_ref: FrozenRawValue | None = None
 
     def __post_init__(self) -> None:
         if not self.local_ref or not self.provenance_id:
             raise ValueError("entity local_ref and provenance_id are required")
         if self.source_identity is not None and not self.source_identity:
             raise ValueError("source_identity must be nonempty when present")
+        if (
+            self.interaction_ref is not None
+            and not isinstance(self.interaction_ref, FrozenRawValue)
+        ):
+            raise ValueError(
+                "interaction_ref must be a frozen raw value when present"
+            )
         if not isinstance(self.features, tuple) or not all(
             isinstance(feature, ObservedFeature)
             for feature in self.features
