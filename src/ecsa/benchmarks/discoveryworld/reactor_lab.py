@@ -5,6 +5,8 @@ import re
 from hashlib import sha256
 from pathlib import Path
 
+from ecsa.autonomy import GENERIC_DISCOVERY_ASSUMPTIONS
+
 from ecsa.mechanisms import (
     ApplicabilityContext,
     EpistemicStatus,
@@ -482,7 +484,13 @@ def add_generic_transfer_annotations(
         kind=mechanism.kind,
         epistemic_status=mechanism.epistemic_status,
         representation_artifact=mechanism.representation_artifact,
-        scope=mechanism.scope,
+        scope=MechanismScope(
+            context_ids=mechanism.scope.context_ids,
+            regime_ids=mechanism.scope.regime_ids,
+            domain_ids=mechanism.scope.domain_ids,
+            task_ids=mechanism.scope.task_ids,
+            required_assumptions=GENERIC_DISCOVERY_ASSUMPTIONS,
+        ),
         transfer_status=mechanism.transfer_status,
         parameters=parameters,
         supporting_evidence=mechanism.supporting_evidence,
