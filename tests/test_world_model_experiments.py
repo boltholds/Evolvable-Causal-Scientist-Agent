@@ -349,3 +349,44 @@ def test_budget_covers_distinct_action_schemas_before_repeating_schema() -> None
         experiment.action.schema_id
         for experiment in experiments
     ) == ("A", "B", "C")
+
+
+
+def test_entity_interaction_handle_is_candidate_before_opaque_scalars() -> None:
+    perception = PerceptualObservation(
+        observation_id="obs",
+        entities=(
+            EntityObservation(
+                local_ref="entity-a",
+                source_identity="label-a",
+                interaction_ref=freeze_raw_value(42),
+                features=(),
+                provenance_id="obs",
+            ),
+        ),
+        global_features=(),
+    )
+    schema = RawActionSchema(
+        schema_id="A17",
+        parameters=(
+            RawActionParameter(
+                name="arg0",
+                public_candidates=(
+                    freeze_raw_value("opaque-string"),
+                ),
+            ),
+        ),
+        public_metadata=freeze_raw_value({}),
+    )
+
+    experiments = ContractExperimentCoordinator().propose(
+        contracts=(),
+        action_schemas=(schema,),
+        perception=perception,
+        budget=ExperimentBudget(max_ground_actions=2),
+    )
+
+    assert [
+        item.action.arguments[0].thaw()
+        for item in experiments
+    ] == [42, "opaque-string"]
