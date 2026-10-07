@@ -70,14 +70,14 @@ def test_arena_b_runs_unfamiliar_scenario_and_writes_contract_snapshot(
 
     assert result.transitions == result.steps
     assert result.steps == 4
-    assert result.contract_count > 0
+    assert result.grounding_evidence_count > 0
     snapshot = json.loads(
         (output / "world_contracts.json").read_text()
     )
     assert snapshot["scenario"] == "Archaeology Dating"
     assert snapshot["difficulty"] == "Normal"
     assert snapshot["seed"] == 0
-    assert snapshot["contracts"]
+    assert len(snapshot["contracts"]) == result.contract_count
     assert all(
         contract["canonical_fingerprint"]
         for contract in snapshot["contracts"]
