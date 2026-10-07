@@ -307,3 +307,81 @@ def test_entity_refs_fill_untyped_action_candidates() -> None:
         experiment.action.arguments[0].thaw()
         for experiment in experiments
     } == {"entity-a", "entity-b"}
+
+
+
+def _unary_schema(
+    schema_id: str,
+    *values: str,
+) -> RawActionSchema:
+    return RawActionSchema(
+        schema_id=schema_id,
+        parameters=(
+            RawActionParameter(
+                name="arg0",
+                public_candidates=tuple(
+                    freeze_raw_value(value)
+                    for value in values
+                ),
+            ),
+        ),
+        public_metadata=freeze_raw_value({}),
+    )
+
+
+def test_candidate_budget_covers_distinct_raw_schemas_before_repeating_one() -> None:
+    coordinator = ContractExperimentCoordinator()
+
+    experiments = coordinator.propose(
+        contracts=(),
+        action_schemas=(
+            _unary_schema("A", "a1", "a2", "a3", "a4"),
+            _unary_schema("B", "b1", "b2"),
+            _unary_schema("C", "c1", "c2"),
+        ),
+        perception=_empty_perception(),
+        budget=ExperimentBudget(max_ground_actions=3),
+    )
+
+    assert {
+        experiment.action.schema_id
+        for experiment in experiments
+    } == {"A", "B", "C"}
+
+
+def test_bootstrap_selection_prefers_unobserved_schema_after_failure() -> None:
+    coordinator = ContractExperimentCoordinator()
+    schemas = (
+        RawActionSchema(
+            schema_id="A",
+            parameters=(),
+            public_metadata=freeze_raw_value({}),
+        ),
+        RawActionSchema(
+            schema_id="B",
+            parameters=(),
+            public_metadata=freeze_raw_value({}),
+        ),
+    )
+    experiments = coordinator.propose(
+        contracts=(),
+        action_schemas=schemas,
+        perception=_empty_perception(),
+        budget=ExperimentBudget(max_ground_actions=4),
+    )
+    first = coordinator.select_bootstrap(experiments)
+    coordinator.record_outcome(
+        first.action,
+        success=False,
+    )
+    second = coordinator.select_bootstrap(
+        coordinator.propose(
+            contracts=(),
+            action_schemas=schemas,
+            perception=_empty_perception(),
+            budget=ExperimentBudget(max_ground_actions=4),
+        )
+    )
+
+    assert first.action.schema_id == "A"
+    assert second.action.schema_id == "B"
