@@ -86,3 +86,34 @@ def test_dialog_action_packet_ticks_exactly_once(monkeypatch) -> None:
     assert result.success is True
     assert received == [{"chosen_dialog_option_int": 1}]
     assert env.steps == before + 1
+
+
+
+def test_upstream_string_errors_are_normalized(monkeypatch) -> None:
+    env = DiscoveryWorldEnvironmentAdapter.reactor_lab_normal(0)
+
+    monkeypatch.setattr(
+        env._api,
+        "performAgentAction",
+        lambda **_: {"success": False, "errors": "dialog parse error"},
+    )
+
+    result = env.act({"action": "PICKUP"})
+
+    assert result.success is False
+    assert result.errors == ("dialog parse error",)
+
+
+def test_upstream_empty_string_errors_are_normalized(monkeypatch) -> None:
+    env = DiscoveryWorldEnvironmentAdapter.reactor_lab_normal(0)
+
+    monkeypatch.setattr(
+        env._api,
+        "performAgentAction",
+        lambda **_: {"success": True, "errors": ""},
+    )
+
+    result = env.act({"action": "PICKUP"})
+
+    assert result.success is True
+    assert result.errors == ()
