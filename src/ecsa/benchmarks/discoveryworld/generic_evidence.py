@@ -163,8 +163,14 @@ class GenericEvidenceLedger:
         context_id: str,
         pre_observation: dict[str, JSONValue],
         action: ActionPacket,
+        action_succeeded: bool,
         post_observation: dict[str, JSONValue],
     ) -> tuple[GenericScalarEvidence, ...]:
+        if type(action_succeeded) is not bool:
+            raise ValueError("action_succeeded must be bool")
+        if not action_succeeded:
+            return ()
+
         pre_dialog = _dialog_text(pre_observation)
         post_dialog = _dialog_text(post_observation)
         direct_ids = _action_entity_ids(action)

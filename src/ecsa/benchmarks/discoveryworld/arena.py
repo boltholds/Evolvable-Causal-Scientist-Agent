@@ -316,6 +316,7 @@ def run_episode(
             context_id=context.context_id or "",
             pre_observation=pre,
             action=decision.action,
+            action_succeeded=action_result.success,
             post_observation=post,
         )
         for evidence in generic_evidence:

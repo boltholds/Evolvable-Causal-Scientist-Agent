@@ -27,6 +27,7 @@ def test_public_scalar_extraction_is_semantic_template_stable() -> None:
         step=1,
         context_id="ctx",
         action={"action": "USE", "arg1": 11, "arg2": 22},
+        action_succeeded=True,
         post_observation=observation(
             message="Probe reports response 12.5 units."
         ),
@@ -54,6 +55,7 @@ def test_dialog_scalar_evidence_keeps_opening_entity_context() -> None:
         context_id="ctx",
         pre_observation=observation(),
         action={"action": "TALK", "arg1": 33},
+        action_succeeded=True,
         post_observation=observation(
             dialog=(
                 "Controller #2\n"
@@ -69,6 +71,7 @@ def test_dialog_scalar_evidence_keeps_opening_entity_context() -> None:
             dialog="Controller #2\nCurrent level: 500 units."
         ),
         action={"chosen_dialog_option_int": 0},
+        action_succeeded=True,
         post_observation=observation(
             dialog="Controller #2\nCurrent level: 600 units."
         ),
@@ -122,6 +125,7 @@ def test_unchanged_public_text_is_not_relabelled_as_new_evidence() -> None:
         context_id="ctx",
         pre_observation=observation(),
         action={"action": "USE", "arg1": 11, "arg2": 22},
+        action_succeeded=True,
         post_observation=observation(
             message="Probe reports response 12.5 units."
         ),
@@ -133,6 +137,7 @@ def test_unchanged_public_text_is_not_relabelled_as_new_evidence() -> None:
             message="Probe reports response 12.5 units."
         ),
         action={"action": "WAIT"},
+        action_succeeded=True,
         post_observation=observation(
             message="Probe reports response 12.5 units."
         ),
@@ -140,3 +145,22 @@ def test_unchanged_public_text_is_not_relabelled_as_new_evidence() -> None:
 
     assert len(first) == 1
     assert stale == ()
+
+
+
+def test_failed_action_does_not_create_scalar_evidence() -> None:
+    ledger = GenericEvidenceLedger()
+
+    created = ledger.record_transition(
+        step=1,
+        context_id="ctx",
+        pre_observation=observation(),
+        action={"action": "USE", "arg1": 11, "arg2": 22},
+        action_succeeded=False,
+        post_observation=observation(
+            message="Action failed for object 22 with error code 500."
+        ),
+    )
+
+    assert created == ()
+    assert ledger.evidence == ()
