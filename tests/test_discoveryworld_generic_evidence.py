@@ -112,3 +112,31 @@ def test_generic_hypothesis_can_cross_policy_boundary() -> None:
     assert decision.generic_hypotheses == (hypothesis,)
     assert decision.generic_validation_hypothesis_ids == ("h1",)
     assert context.generic_evidence == ()
+
+
+
+def test_unchanged_public_text_is_not_relabelled_as_new_evidence() -> None:
+    ledger = GenericEvidenceLedger()
+    first = ledger.record_transition(
+        step=1,
+        context_id="ctx",
+        pre_observation=observation(),
+        action={"action": "USE", "arg1": 11, "arg2": 22},
+        post_observation=observation(
+            message="Probe reports response 12.5 units."
+        ),
+    )
+    stale = ledger.record_transition(
+        step=2,
+        context_id="ctx",
+        pre_observation=observation(
+            message="Probe reports response 12.5 units."
+        ),
+        action={"action": "WAIT"},
+        post_observation=observation(
+            message="Probe reports response 12.5 units."
+        ),
+    )
+
+    assert len(first) == 1
+    assert stale == ()
