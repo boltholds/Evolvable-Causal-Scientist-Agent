@@ -1,0 +1,35 @@
+from .legacy import (
+    ActionAffordance,
+    ActionRole,
+    AutonomousDecision,
+    AutonomousWorldView,
+    DialogOption,
+    GENERIC_DISCOVERY_ASSUMPTIONS,
+    GenericNumericHypothesis,
+    GenericNumericPrediction,
+    GenericScalarEvidence,
+    LegacyAutonomousScientist,
+    PublicEntityView,
+    TransferMechanismView,
+    TRANSFER_KEY,
+    public_state_is_preferred,
+)
+from .scientist import AutonomousScientist
+
+__all__ = [
+    "ActionAffordance",
+    "ActionRole",
+    "AutonomousDecision",
+    "AutonomousScientist",
+    "AutonomousWorldView",
+    "DialogOption",
+    "GENERIC_DISCOVERY_ASSUMPTIONS",
+    "GenericNumericHypothesis",
+    "GenericNumericPrediction",
+    "GenericScalarEvidence",
+    "LegacyAutonomousScientist",
+    "PublicEntityView",
+    "TransferMechanismView",
+    "TRANSFER_KEY",
+    "public_state_is_preferred",
+]
