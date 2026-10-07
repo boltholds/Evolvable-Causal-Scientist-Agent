@@ -1,0 +1,31 @@
+name: autonomous-discovery
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: autonomous-discovery-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  autonomous-discovery:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install -e '.[test,mlmd,discoveryworld]'
+      - name: Test
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+        run: |
+          pytest -q \
+            tests/test_discoveryworld_environment.py \
+            tests/test_discoveryworld_generic_evidence.py \
+            tests/test_discoveryworld_generic_bridge.py \
+            tests/test_discoveryworld_autonomous_policy.py
