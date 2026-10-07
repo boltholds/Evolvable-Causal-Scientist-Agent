@@ -107,3 +107,42 @@ class ActionModelLearner(Protocol):
         traces: tuple[AcquisitionTrace, ...],
         current_contracts: tuple[WorldContractHypothesis, ...],
     ) -> ActionModelResult: ...
+
+
+
+def proposal_to_world_contract(
+    proposal: ActionModelProposal,
+) -> WorldContractHypothesis:
+    if not isinstance(proposal, ActionModelProposal):
+        raise TypeError("proposal must be ActionModelProposal")
+
+    from ..canonical import canonicalize_world_contract
+    from ..hypotheses import HypothesisStatus
+
+    provisional = WorldContractHypothesis(
+        contract_id=f"proposal:{proposal.learner_id}",
+        entity_types=proposal.entity_types,
+        predicates=proposal.predicates,
+        numeric_fluents=(),
+        argument_roles=(),
+        actions=proposal.actions,
+        affordances=(),
+        supporting_evidence_ids=proposal.supporting_evidence_ids,
+        contradicting_evidence_ids=(),
+        confidence=0.5,
+        status=HypothesisStatus.PROPOSED,
+    )
+    fingerprint = canonicalize_world_contract(provisional).fingerprint
+    return WorldContractHypothesis(
+        contract_id=f"world-contract:{fingerprint}",
+        entity_types=proposal.entity_types,
+        predicates=proposal.predicates,
+        numeric_fluents=(),
+        argument_roles=(),
+        actions=proposal.actions,
+        affordances=(),
+        supporting_evidence_ids=proposal.supporting_evidence_ids,
+        contradicting_evidence_ids=(),
+        confidence=0.5,
+        status=HypothesisStatus.PROPOSED,
+    )
