@@ -174,11 +174,14 @@ class AutonomousScientistPolicy:
             raise ValueError("policy config must be a JSON object")
         degree = config.get("max_polynomial_degree", 2)
         pair_trials = config.get("max_pair_trials", 160)
+        local_pair_trials = config.get("max_local_pair_trials", 12)
         tolerance = config.get("control_tolerance", 1.5)
         if type(degree) is not int:
             raise ValueError("max_polynomial_degree must be an integer")
         if type(pair_trials) is not int:
             raise ValueError("max_pair_trials must be an integer")
+        if type(local_pair_trials) is not int:
+            raise ValueError("max_local_pair_trials must be an integer")
         if not isinstance(tolerance, (int, float)) or isinstance(
             tolerance, bool
         ):
@@ -186,6 +189,7 @@ class AutonomousScientistPolicy:
         self._scientist = AutonomousScientist(
             max_polynomial_degree=degree,
             max_pair_trials=pair_trials,
+            max_local_pair_trials=local_pair_trials,
             control_tolerance=float(tolerance),
         )
 
