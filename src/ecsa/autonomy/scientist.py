@@ -46,6 +46,8 @@ class AutonomousScientist:
         self.experiments = experiments
         self.perception = perception
         self._grounder = InteractionGrounder()
+        self._experiment_attempts: dict[str, int] = {}
+        self._pending_experiment: ContractExperiment | None = None
 
     def choose_experiment(
         self,
@@ -72,20 +74,39 @@ class AutonomousScientist:
             raise ValueError(
                 "no contract experiment can be grounded from the public surface"
             )
-        if not contracts:
-            return candidates[0]
-
-        probability = 1.0 / len(contracts)
-        posterior = TheoryPosterior(
-            tuple(
-                (contract.contract_id, probability)
-                for contract in contracts
+        minimum_attempts = min(
+            self._experiment_attempts.get(
+                candidate.experiment_id,
+                0,
             )
+            for candidate in candidates
         )
-        return self.experiments.select(
-            posterior=posterior,
-            experiments=candidates,
+        eligible = tuple(
+            candidate
+            for candidate in candidates
+            if self._experiment_attempts.get(
+                candidate.experiment_id,
+                0,
+            )
+            == minimum_attempts
         )
+
+        if not contracts:
+            selected = eligible[0]
+        else:
+            probability = 1.0 / len(contracts)
+            posterior = TheoryPosterior(
+                tuple(
+                    (contract.contract_id, probability)
+                    for contract in contracts
+                )
+            )
+            selected = self.experiments.select(
+                posterior=posterior,
+                experiments=eligible,
+            )
+        self._pending_experiment = selected
+        return selected
 
     def observe_transition(
         self,
@@ -95,6 +116,22 @@ class AutonomousScientist:
             raise TypeError(
                 "transition must be InteractionTransition"
             )
+        pending = self._pending_experiment
+        if pending is not None:
+            if pending.action != transition.action:
+                raise ValueError(
+                    "observed transition action does not match "
+                    "the selected contract experiment"
+                )
+            self._experiment_attempts[pending.experiment_id] = (
+                self._experiment_attempts.get(
+                    pending.experiment_id,
+                    0,
+                )
+                + 1
+            )
+            self._pending_experiment = None
+
         before = self.perception.perceive(transition.before)
         after = self.perception.perceive(transition.after)
         grounding = self._grounder.observe(
