@@ -333,3 +333,75 @@ The primary integration question is:
 > Can an expanding Bayesian theory space, explicit causal inference, specialized model-repair engines, and a reusable mechanism library jointly improve causal accuracy, transfer, and goal-directed sample efficiency compared with their individual components?
 
 That question must be answered experimentally rather than assumed from architecture alone.
+
+
+## 8. World model acquisition and autonomous world contracts
+
+ECSA now separates learning the **language of an unfamiliar world** from
+learning causal mechanisms inside that language.
+
+The autonomous path is:
+
+```text
+RawEnvironmentPort
+        |
+RawObservation / RawActionSchema / GroundAction / RawActionOutcome
+        |
+PerceptionFrontend
+        |
+InteractionGrounder
+        |
+WorldModelAcquisitionKernel
+        |
+WorldContractHypothesis population
+        |
+ContractExperimentCoordinator
+        |
+ScienceKernel information-directed selection
+```
+
+A world contract contains candidate entity types, predicates, numeric fluents,
+action schemas, preconditions/effects, argument roles, and affordances. These
+are hypotheses with evidence and confidence, not facts supplied by a benchmark
+adapter.
+
+Action-model acquisition backends implement one ECSA protocol. The first
+external backend is MAcq 0.3.11 using its LOCM extractor. ECSA also has a
+LOCM2-style multi-state-machine backend for domains where one object sort has
+multiple independent state aspects. Backend-native planning objects never cross
+the learner boundary.
+
+World contracts and causal mechanisms are distinct. A world contract says how
+an environment can be represented and interacted with; a mechanism says what
+validated relationship holds inside that representation. Structural world
+contracts may be persisted and retrieved across contexts through canonical
+fingerprints that are invariant to action/entity renaming.
+
+### Perception boundary
+
+Structured environments can provide public object records through
+`StructuredObservationFrontend`. The downstream contracts do not require
+stable upstream IDs.
+
+`SlotAttentionFrontend` is the planned classical object-centric perception
+backend for low-level visual worlds. In v1 it is an injected backend boundary,
+not a neural dependency: no PyTorch package is required by the default ECSA
+install. A perceptual slot is only an object-like candidate; temporal
+entity identity remains a separate grounding hypothesis.
+
+### DiscoveryWorld arenas
+
+DiscoveryWorld now has two distinct experimental roles:
+
+- **Arena A — structured transfer:** the original Reactor Lab sidecar tests
+  mechanism qualification, persistence, transfer-candidate retrieval, and
+  target-context validation from already structured scientific evidence.
+- **Arena B — autonomous world-contract discovery:** a raw transport adapter
+  exposes only agent-visible observations, raw action symbols/arguments, and
+  public outcomes. ECSA induces action/world structure itself through the
+  world-model acquisition kernel.
+
+Arena B does not depend on the Reactor Lab scientific sidecar or semantic
+action-role mappings. The raw adapter may normalize DiscoveryWorld wire-format
+details, but it does not declare actions to be observations, acquisitions,
+probes, placements, measurements, or controls.
