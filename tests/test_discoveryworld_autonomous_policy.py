@@ -506,3 +506,27 @@ def test_location_becomes_novel_again_after_inventory_change() -> None:
         "lab-a",
         "lab-b",
     }
+
+    scientist._mark_location_visited(carrying_view, "lab-a")
+    scientist._mark_location_visited(carrying_view, "lab-b")
+    carrying_second_specimen = autonomy.AutonomousWorldView(
+        goal_text="Investigate system",
+        entities=(
+            *carrying_view.entities,
+            autonomy.PublicEntityView(
+                entity_id=2,
+                name="sample 2",
+                description="sample",
+                accessible=True,
+                inventory=True,
+            ),
+        ),
+        actions=(),
+        locations=("lab-a", "lab-b"),
+        in_dialog=False,
+        dialog_options=(),
+    )
+    assert scientist._next_location(carrying_second_specimen) in {
+        "lab-a",
+        "lab-b",
+    }
