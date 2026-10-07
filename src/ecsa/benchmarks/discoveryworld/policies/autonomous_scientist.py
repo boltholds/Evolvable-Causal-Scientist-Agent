@@ -3,6 +3,7 @@ from __future__ import annotations
 from ecsa.autonomy import (
     ActionAffordance,
     ActionRole,
+    GENERIC_DISCOVERY_ASSUMPTIONS,
     AutonomousScientist,
     AutonomousWorldView,
     DialogOption,
@@ -142,6 +143,8 @@ def _dialog(
 
 
 class AutonomousScientistPolicy:
+    scientific_assumptions = GENERIC_DISCOVERY_ASSUMPTIONS
+
     def __init__(self, config: dict[str, JSONValue]) -> None:
         if not isinstance(config, dict):
             raise ValueError("policy config must be a JSON object")
