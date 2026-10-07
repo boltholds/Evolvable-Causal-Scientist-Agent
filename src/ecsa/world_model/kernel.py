@@ -80,18 +80,19 @@ class WorldModelAcquisitionKernel:
                 key=lambda value: value.argument_index,
             )
         )
-        self._acquisition_steps.append(
-            AcquisitionActionStep(
-                schema_id=update.transition.schema_id,
-                object_refs=tuple(
-                    str(item.argument_value.thaw())
-                    for item in participation
-                ),
-                evidence_id=(
-                    update.transition.outcome_evidence.evidence_id
-                ),
+        if update.transition.outcome_evidence.success:
+            self._acquisition_steps.append(
+                AcquisitionActionStep(
+                    schema_id=update.transition.schema_id,
+                    object_refs=tuple(
+                        str(item.argument_value.thaw())
+                        for item in participation
+                    ),
+                    evidence_id=(
+                        update.transition.outcome_evidence.evidence_id
+                    ),
+                )
             )
-        )
 
         added: list[str] = []
         updated: list[str] = []
