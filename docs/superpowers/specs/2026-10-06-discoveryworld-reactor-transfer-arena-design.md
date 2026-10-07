@@ -1,5 +1,10 @@
 # DiscoveryWorld Reactor Lab Transfer Arena Design
 
+> **Status:** Arena A / structured-transfer baseline. This design remains the
+> regression and ablation path for mechanism-memory transfer. Autonomous
+> world-contract discovery is specified separately in
+> `2026-10-07-world-model-acquisition-kernel-design.md`.
+
 Date: 2026-10-06
 
 ## 1. Purpose
