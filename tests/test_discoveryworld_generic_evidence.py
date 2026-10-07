@@ -27,7 +27,6 @@ def test_public_scalar_extraction_is_semantic_template_stable() -> None:
         step=1,
         context_id="ctx",
         action={"action": "USE", "arg1": 11, "arg2": 22},
-        action_succeeded=True,
         post_observation=observation(
             message="Probe reports response 12.5 units."
         ),
