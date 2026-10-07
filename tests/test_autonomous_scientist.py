@@ -111,3 +111,52 @@ def test_autonomous_scientist_has_no_benchmark_semantic_action_categories() -> N
     )
 
     assert not any(token in source for token in forbidden)
+
+
+
+def test_autonomous_scientist_prefers_untried_experiment() -> None:
+    scientist = AutonomousScientist(
+        world_model=WorldModelAcquisitionKernel(),
+        experiments=ContractExperimentCoordinator(),
+        perception=EmptyPerception(),
+    )
+    schemas = (
+        RawActionSchema(
+            schema_id="A1",
+            parameters=(),
+            public_metadata=freeze_raw_value({}),
+        ),
+        RawActionSchema(
+            schema_id="Z9",
+            parameters=(),
+            public_metadata=freeze_raw_value({}),
+        ),
+    )
+
+    first = scientist.choose_experiment(
+        observation=_observation("obs-0", 0),
+        actions=schemas,
+        goal=freeze_raw_value({"goal": "opaque"}),
+        budget=ExperimentBudget(max_ground_actions=8),
+    )
+    scientist.observe_transition(
+        InteractionTransition(
+            transition_id="t1",
+            before=_observation("obs-0", 0),
+            action=first.action,
+            outcome=RawActionOutcome(
+                success=False,
+                payload=freeze_raw_value({"error": "rejected"}),
+            ),
+            after=_observation("obs-1", 1),
+        )
+    )
+    second = scientist.choose_experiment(
+        observation=_observation("obs-1", 1),
+        actions=schemas,
+        goal=freeze_raw_value({"goal": "opaque"}),
+        budget=ExperimentBudget(max_ground_actions=8),
+    )
+
+    assert first.action.schema_id == "A1"
+    assert second.action.schema_id == "Z9"
