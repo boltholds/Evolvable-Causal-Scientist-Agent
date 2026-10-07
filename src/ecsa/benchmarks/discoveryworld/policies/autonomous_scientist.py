@@ -4,7 +4,7 @@ from ecsa.autonomy import (
     ActionAffordance,
     ActionRole,
     GENERIC_DISCOVERY_ASSUMPTIONS,
-    AutonomousScientist,
+    LegacyAutonomousScientist,
     AutonomousWorldView,
     DialogOption,
     PublicEntityView,
@@ -186,7 +186,7 @@ class AutonomousScientistPolicy:
             tolerance, bool
         ):
             raise ValueError("control_tolerance must be numeric")
-        self._scientist = AutonomousScientist(
+        self._scientist = LegacyAutonomousScientist(
             max_polynomial_degree=degree,
             max_pair_trials=pair_trials,
             max_local_pair_trials=local_pair_trials,
