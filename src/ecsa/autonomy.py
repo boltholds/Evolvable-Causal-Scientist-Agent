@@ -1093,9 +1093,9 @@ class AutonomousScientist:
                 "success",
                 "complete",
                 "ready",
-                "active",
+                "activat",
                 "open",
-                "on",
+                " on ",
             )
         )
 
