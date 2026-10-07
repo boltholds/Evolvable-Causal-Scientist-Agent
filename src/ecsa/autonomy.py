@@ -626,7 +626,6 @@ class AutonomousScientist:
                     for entity in current.values()
                     if entity.entity_id not in self._visited_objects
                     and not entity.accessible
-                    and self._relevance(view, entity) > 0
                 ),
                 key=lambda entity: (
                     -self._relevance(view, entity),
