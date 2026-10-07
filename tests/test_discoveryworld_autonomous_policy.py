@@ -1,13 +1,21 @@
+from pathlib import Path
+
 import inspect
 
 from ecsa.benchmarks.discoveryworld.contracts import (
+    DiscoveryWorldEpisodeConfig,
     GenericScalarEvidence,
     ScientificContext,
 )
 import ecsa.autonomy as autonomy
+from ecsa.adapters.mlmd import MLMDMechanismRepository
 from ecsa.benchmarks.discoveryworld.policies import autonomous_scientist
 from ecsa.benchmarks.discoveryworld.policies.autonomous_scientist import (
     AutonomousScientistPolicy,
+)
+from ecsa.benchmarks.discoveryworld.arena import (
+    _context_for_policy,
+    run_episode,
 )
 from ecsa.mechanisms import (
     EpistemicStatus,
@@ -68,6 +76,9 @@ def test_autonomous_policy_has_no_scenario_spoilers() -> None:
         "linear",
     )
     assert not any(token in source for token in forbidden)
+    core_source = inspect.getsource(autonomy).lower()
+    assert "benchmarks" not in core_source
+    assert "discoveryworld" not in core_source
 
 
 def test_autonomous_policy_selects_location_from_public_goal_words() -> None:
@@ -180,3 +191,45 @@ def test_autonomous_policy_does_not_assert_function_family() -> None:
         "linear" not in assumption
         for assumption in policy.scientific_assumptions
     )
+
+
+
+def test_arena_uses_generic_context_for_autonomous_policy() -> None:
+    policy = AutonomousScientistPolicy({})
+    context = _context_for_policy(seed=0, policy=policy)
+
+    assert context.assumptions == (
+        "public-observation-only",
+        "generic-scalar-discovery",
+    )
+    assert "linear-family" not in context.assumptions
+
+
+def test_real_autonomous_policy_executes_public_loop(
+    tmp_path: Path,
+) -> None:
+    policy = AutonomousScientistPolicy(
+        {
+            "max_polynomial_degree": 2,
+            "max_pair_trials": 16,
+        }
+    )
+    repository = MLMDMechanismRepository.sqlite(
+        tmp_path / "mechanisms.sqlite"
+    )
+
+    result = run_episode(
+        config=DiscoveryWorldEpisodeConfig(
+            scenario="Reactor Lab",
+            difficulty="Normal",
+            seed=0,
+            max_steps=5,
+        ),
+        policy=policy,
+        repository=repository,
+        output_dir=tmp_path / "run",
+    )
+
+    assert 1 <= result.evaluation.steps <= 5
+    assert (tmp_path / "run" / "actions.jsonl").exists()
+    assert (tmp_path / "run" / "observations.jsonl").exists()
