@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
-from ..contracts import RawObservation
+from ..contracts import FrozenRawValue, RawObservation
 from .base import (
     EntityObservation,
     ObservedFeature,
@@ -16,12 +16,20 @@ class StructuredEntityRecord:
     local_ref: str
     source_identity: str | None
     features: tuple[ObservedFeature, ...]
+    interaction_ref: FrozenRawValue | None = None
 
     def __post_init__(self) -> None:
         if not self.local_ref:
             raise ValueError("structured local_ref is required")
         if self.source_identity is not None and not self.source_identity:
             raise ValueError("source_identity must be nonempty when present")
+        if (
+            self.interaction_ref is not None
+            and not isinstance(self.interaction_ref, FrozenRawValue)
+        ):
+            raise ValueError(
+                "interaction_ref must be frozen when present"
+            )
         if not isinstance(self.features, tuple) or not all(
             isinstance(feature, ObservedFeature)
             for feature in self.features
@@ -51,6 +59,7 @@ class StructuredObservationFrontend:
                 source_identity=record.source_identity,
                 features=record.features,
                 provenance_id=raw_observation.observation_id,
+                interaction_ref=record.interaction_ref,
             )
             for record in sorted(
                 records,
