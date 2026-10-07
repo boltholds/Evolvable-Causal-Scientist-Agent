@@ -16,7 +16,7 @@ _NUMBER = re.compile(
 )
 _STATE = re.compile(r"\(([^()]*)\)")
 TRANSFER_KEY = "scalar-interaction-to-control"
-
+GENERIC_DISCOVERY_ASSUMPTIONS = (\n    "public-observation-only",\n    "generic-scalar-discovery",\n)\n
 
 class ActionRole(StrEnum):
     VISIT_LOCATION = "visit_location"
