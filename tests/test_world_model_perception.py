@@ -47,6 +47,11 @@ class FakeStructuredDecoder:
                     if self.with_identity
                     else None
                 ),
+                interaction_ref=(
+                    freeze_raw_value(7)
+                    if self.with_identity
+                    else None
+                ),
                 features=(
                     ObservedFeature(
                         feature_id="appearance.embedding",
@@ -94,7 +99,10 @@ def test_structured_frontend_preserves_public_id_as_evidence_not_required_identi
     ).perceive(_raw("anonymous"))
 
     assert identified.entities[0].source_identity == "public-id:7"
+    assert identified.entities[0].interaction_ref is not None
+    assert identified.entities[0].interaction_ref.thaw() == 7
     assert anonymous.entities[0].source_identity is None
+    assert anonymous.entities[0].interaction_ref is None
     assert identified.entities[0].features[0].feature_id == (
         "appearance.embedding"
     )
