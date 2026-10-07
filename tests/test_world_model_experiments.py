@@ -307,3 +307,45 @@ def test_entity_refs_fill_untyped_action_candidates() -> None:
         experiment.action.arguments[0].thaw()
         for experiment in experiments
     } == {"entity-a", "entity-b"}
+
+
+
+def test_budget_covers_distinct_action_schemas_before_repeating_schema() -> None:
+    many = RawActionSchema(
+        schema_id="A",
+        parameters=(
+            RawActionParameter(
+                name="arg",
+                public_candidates=tuple(
+                    freeze_raw_value(value)
+                    for value in ("x1", "x2", "x3", "x4")
+                ),
+            ),
+        ),
+        public_metadata=freeze_raw_value({}),
+    )
+    schemas = (
+        many,
+        RawActionSchema(
+            schema_id="B",
+            parameters=(),
+            public_metadata=freeze_raw_value({}),
+        ),
+        RawActionSchema(
+            schema_id="C",
+            parameters=(),
+            public_metadata=freeze_raw_value({}),
+        ),
+    )
+
+    experiments = ContractExperimentCoordinator().propose(
+        contracts=(),
+        action_schemas=schemas,
+        perception=_empty_perception(),
+        budget=ExperimentBudget(max_ground_actions=3),
+    )
+
+    assert tuple(
+        experiment.action.schema_id
+        for experiment in experiments
+    ) == ("A", "B", "C")
