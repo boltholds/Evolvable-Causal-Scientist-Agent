@@ -21,6 +21,7 @@ from .contracts import (
     DiscoveryWorldEpisodeConfig,
     PairedSeedResult,
     PolicyDecision,
+    GenericNumericHypothesis,
     ReactorMechanismHypothesis,
     ScientificContext,
     TransferArenaResult,
@@ -29,9 +30,12 @@ from .environment import (
     DISCOVERYWORLD_REVISION,
     DiscoveryWorldEnvironmentAdapter,
 )
+from .generic_evidence import GenericEvidenceLedger
 from .reactor_lab import (
     ReactorLabScientificSidecar,
     ReactorRuleArtifactStore,
+    add_generic_transfer_annotations,
+    bridge_generic_numeric_hypothesis,
     build_admitted_reactor_mechanism,
     measurement_action_key,
     reactor_context,
@@ -77,6 +81,7 @@ def run_episode(
     )
     context = reactor_context(config.seed)
     sidecar = ReactorLabScientificSidecar()
+    generic_ledger = GenericEvidenceLedger()
     artifact_store = ReactorRuleArtifactStore(Path(output_dir) / "artifacts")
     writer = ArenaRunWriter(output_dir)
     writer.write_json(
@@ -98,6 +103,7 @@ def run_episode(
 
     admitted_this_run: list[MechanismRecord] = []
     frozen: dict[str, ReactorMechanismHypothesis] = {}
+    generic_frozen: dict[str, GenericNumericHypothesis] = {}
     run_metrics = ReactorRunMetricsAccumulator()
     tested_transfer_refs: set[str] = set()
     accepted_transfer_refs: set[str] = set()
@@ -122,6 +128,7 @@ def run_episode(
             measurements=sidecar.measurements,
             transfer_candidates=transfer_candidates,
             admitted_mechanisms=repository.find_applicable(context),
+            generic_evidence=generic_ledger.evidence,
         )
         decision = policy.decide(
             pre,
@@ -132,7 +139,37 @@ def run_episode(
         if not isinstance(decision, PolicyDecision):
             raise TypeError("policy must return PolicyDecision")
 
-        for hypothesis in decision.hypotheses:
+        bridged: list[ReactorMechanismHypothesis] = []
+        for generic in decision.generic_hypotheses:
+            if (
+                generic.source_mechanism is not None
+                and generic.source_mechanism not in transfer_candidate_refs
+            ):
+                raise ValueError(
+                    "generic hypothesis source_mechanism must be a current transfer candidate"
+                )
+            previous_generic = generic_frozen.get(generic.hypothesis_id)
+            if previous_generic is None:
+                converted = bridge_generic_numeric_hypothesis(
+                    hypothesis=generic,
+                    generic_evidence=generic_ledger.evidence,
+                    measurements=sidecar.measurements,
+                )
+                generic_frozen[generic.hypothesis_id] = generic
+                bridged.append(converted)
+                writer.append_jsonl(
+                    "scientific_events.jsonl",
+                    {
+                        "kind": "generic_hypothesis_frozen",
+                        "hypothesis": generic,
+                    },
+                )
+            elif previous_generic != generic:
+                raise ValueError(
+                    f"generic hypothesis_id reused with different content: {generic.hypothesis_id}"
+                )
+
+        for hypothesis in (*decision.hypotheses, *bridged):
             if (
                 hypothesis.source_mechanism is not None
                 and hypothesis.source_mechanism not in transfer_candidate_refs
@@ -153,7 +190,16 @@ def run_episode(
                     f"hypothesis_id reused with different content: {hypothesis.hypothesis_id}"
                 )
 
-        for hypothesis_id in decision.validation_hypothesis_ids:
+        validation_hypothesis_ids = tuple(
+            dict.fromkeys(
+                (
+                    *decision.validation_hypothesis_ids,
+                    *decision.generic_validation_hypothesis_ids,
+                )
+            )
+        )
+
+        for hypothesis_id in validation_hypothesis_ids:
             if hypothesis_id not in frozen:
                 raise ValueError(
                     f"validation requested for unfrozen hypothesis: {hypothesis_id}"
@@ -193,6 +239,19 @@ def run_episode(
             {"step": environment.steps, "phase": "post", "observation": post},
         )
 
+        generic_evidence = generic_ledger.record_transition(
+            step=environment.steps,
+            context_id=context.context_id or "",
+            pre_observation=pre,
+            action=decision.action,
+            post_observation=post,
+        )
+        for evidence in generic_evidence:
+            writer.append_jsonl(
+                "scientific_events.jsonl",
+                {"kind": "generic_scalar_evidence", "evidence": evidence},
+            )
+
         measurements = sidecar.record_transition(
             step=environment.steps,
             context_id=context.context_id or "",
@@ -211,7 +270,7 @@ def run_episode(
             step=environment.steps,
             pre_observation=pre,
             post_observation=post,
-            hypothesis_ids=decision.validation_hypothesis_ids,
+            hypothesis_ids=validation_hypothesis_ids,
         )
         for validation in validations:
             hypothesis = frozen[validation.hypothesis_id]
@@ -237,6 +296,14 @@ def run_episode(
                 context_id=context.context_id or "",
                 artifact_store=artifact_store,
             )
+            generic_source = generic_frozen.get(
+                validation.hypothesis_id
+            )
+            if generic_source is not None:
+                mechanism = add_generic_transfer_annotations(
+                    mechanism,
+                    generic_source,
+                )
             repository.admit(mechanism)
             admitted_this_run.append(mechanism)
             if hypothesis.source_mechanism is not None:

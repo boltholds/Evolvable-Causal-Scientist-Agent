@@ -19,6 +19,8 @@ from ecsa.mechanisms import (
 from .contracts import (
     ActionPacket,
     DiscoveryWorldActionResult,
+    GenericNumericHypothesis,
+    GenericScalarEvidence,
     JSONValue,
     MeasurementKind,
     ParsedMeasurement,
@@ -380,6 +382,112 @@ def _validation_to_wire(validation: ReactorValidationEvent) -> dict:
         "success": validation.success,
         "observed_frequency": validation.observed_frequency,
     }
+
+
+def bridge_generic_numeric_hypothesis(
+    *,
+    hypothesis: GenericNumericHypothesis,
+    generic_evidence: tuple[GenericScalarEvidence, ...],
+    measurements: tuple[ReactorMeasurement, ...],
+) -> ReactorMechanismHypothesis:
+    if hypothesis.polynomial_degree != 1:
+        raise ValueError(
+            "Reactor Lab qualification currently supports degree-1 generic programs"
+        )
+    evidence_by_id = {
+        item.evidence_id: item
+        for item in generic_evidence
+    }
+    mapped: list[ReactorMeasurement] = []
+    for evidence_id in hypothesis.source_evidence_ids:
+        generic = evidence_by_id.get(evidence_id)
+        if generic is None or len(generic.entity_ids) < 2:
+            continue
+        for measurement in measurements:
+            if measurement.step != generic.step:
+                continue
+            if (
+                measurement.instrument_uuid not in generic.entity_ids
+                or measurement.crystal_uuid not in generic.entity_ids
+            ):
+                continue
+            if any(
+                abs(value - generic.value) < 1e-9
+                for value in measurement.values
+            ):
+                mapped.append(measurement)
+                break
+
+    mapped = list(
+        {
+            item.evidence_id: item
+            for item in mapped
+        }.values()
+    )
+    if len(mapped) < 2:
+        raise ValueError(
+            "generic hypothesis lacks two public typed measurements for qualification"
+        )
+    kinds = {item.kind for item in mapped}
+    if len(kinds) != 1:
+        raise ValueError(
+            "generic hypothesis source evidence spans incompatible measurement kinds"
+        )
+    [kind] = kinds
+
+    offset, slope = hypothesis.coefficients
+    return ReactorMechanismHypothesis(
+        hypothesis_id=hypothesis.hypothesis_id,
+        measurement_kind=kind,
+        slope=slope,
+        offset=offset,
+        source_evidence_ids=tuple(
+            item.evidence_id
+            for item in mapped
+        ),
+        predictions=tuple(
+            ReactorFrequencyPrediction(
+                target_crystal_uuid=item.subject_entity_id,
+                target_reactor_uuid=item.control_entity_id,
+                predicted_frequency=item.predicted_value,
+                frozen_step=item.frozen_step,
+            )
+            for item in hypothesis.predictions
+        ),
+        source_mechanism=hypothesis.source_mechanism,
+    )
+
+
+def add_generic_transfer_annotations(
+    mechanism: MechanismRecord,
+    hypothesis: GenericNumericHypothesis,
+) -> MechanismRecord:
+    annotations = (
+        ("transfer_key", hypothesis.transfer_key),
+        ("generic_feature_key", hypothesis.feature_key),
+        ("generic_control_feature_key", hypothesis.control_feature_key),
+        ("generic_degree", hypothesis.polynomial_degree),
+    )
+    existing_names = {name for name, _ in mechanism.parameters}
+    parameters = mechanism.parameters + tuple(
+        item
+        for item in annotations
+        if item[0] not in existing_names
+    )
+    return MechanismRecord(
+        mechanism_id=mechanism.mechanism_id,
+        version=mechanism.version,
+        kind=mechanism.kind,
+        epistemic_status=mechanism.epistemic_status,
+        representation_artifact=mechanism.representation_artifact,
+        scope=mechanism.scope,
+        transfer_status=mechanism.transfer_status,
+        parameters=parameters,
+        supporting_evidence=mechanism.supporting_evidence,
+        contradicting_evidence=mechanism.contradicting_evidence,
+        provenance=mechanism.provenance,
+        relations=mechanism.relations,
+    )
 
 
 class ReactorRuleArtifactStore:
