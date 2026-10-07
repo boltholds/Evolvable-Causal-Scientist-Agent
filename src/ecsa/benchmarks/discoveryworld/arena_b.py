@@ -6,6 +6,7 @@ from enum import Enum
 from pathlib import Path
 
 from ecsa.autonomy.scientist import AutonomousScientist
+from ecsa.world_model.canonical import canonicalize_world_contract
 from ecsa.world_model.contracts import (
     InteractionTransition,
     freeze_raw_value,
@@ -72,16 +73,13 @@ def run_autonomous_episode(
     output_dir: Path,
     max_ground_actions: int = 64,
 ) -> ArenaBResult:
-    if scenario != "Reactor Lab" or difficulty != "Normal":
-        raise ValueError(
-            "current DiscoveryWorld Arena B runner "
-            "supports Reactor Lab / Normal loading"
-        )
     if type(max_steps) is not int or max_steps < 1:
         raise ValueError("max_steps must be positive")
 
-    environment = DiscoveryWorldRawEnvironment.reactor_lab_normal(
-        seed,
+    environment = DiscoveryWorldRawEnvironment.load(
+        scenario=scenario,
+        difficulty=difficulty,
+        seed=seed,
         max_steps=max_steps,
     )
     world_model = WorldModelAcquisitionKernel(
@@ -169,8 +167,34 @@ def run_autonomous_episode(
                     value.contract_id
                     for value in update.contracts
                 ),
+                "learner_failures": update.learner_failures,
             },
         )
+
+    contracts = world_model.contract_hypotheses()
+    (root / "world_contracts.json").write_text(
+        json.dumps(
+            {
+                "scenario": scenario,
+                "difficulty": difficulty,
+                "seed": seed,
+                "contracts": [
+                    {
+                        "canonical_fingerprint": (
+                            canonicalize_world_contract(
+                                contract
+                            ).fingerprint
+                        ),
+                        "contract": _wire(contract),
+                    }
+                    for contract in contracts
+                ],
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n"
+    )
 
     return ArenaBResult(
         steps=environment.steps,
