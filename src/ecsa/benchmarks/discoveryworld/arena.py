@@ -11,7 +11,11 @@ from pathlib import Path
 from collections.abc import Callable
 
 from ecsa.adapters.mlmd import MLMDMechanismRepository
-from ecsa.mechanisms import MechanismRecord, MechanismRepository
+from ecsa.mechanisms import (
+    ApplicabilityContext,
+    MechanismRecord,
+    MechanismRepository,
+)
 
 from .contracts import (
     ArenaArm,
@@ -63,6 +67,35 @@ def _timestamp_utc() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+def _context_for_policy(
+    *,
+    seed: int,
+    policy: DiscoveryWorldActionPolicy,
+) -> ApplicabilityContext:
+    base = reactor_context(seed)
+    assumptions = getattr(policy, "scientific_assumptions", None)
+    if assumptions is None:
+        return base
+    if (
+        not isinstance(assumptions, tuple)
+        or not assumptions
+        or not all(
+            isinstance(value, str) and value
+            for value in assumptions
+        )
+    ):
+        raise ValueError(
+            "policy scientific_assumptions must be a nonempty string tuple"
+        )
+    return ApplicabilityContext(
+        context_id=base.context_id,
+        regime_id=base.regime_id,
+        domain_id=base.domain_id,
+        task_id=base.task_id,
+        assumptions=assumptions,
+    )
+
+
 def run_episode(
     *,
     config: DiscoveryWorldEpisodeConfig,
@@ -79,7 +112,10 @@ def run_episode(
         config.seed,
         max_steps=config.max_steps,
     )
-    context = reactor_context(config.seed)
+    context = _context_for_policy(
+        seed=config.seed,
+        policy=policy,
+    )
     sidecar = ReactorLabScientificSidecar()
     generic_ledger = GenericEvidenceLedger()
     artifact_store = ReactorRuleArtifactStore(Path(output_dir) / "artifacts")
