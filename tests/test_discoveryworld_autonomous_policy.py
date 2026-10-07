@@ -394,3 +394,51 @@ def test_binary_probe_prioritizes_unseen_type_pairs() -> None:
         )
 
     assert len(set(type_pairs)) == 3
+
+
+
+def test_local_binary_budget_forces_exploration() -> None:
+    policy = AutonomousScientistPolicy(
+        {
+            "max_pair_trials": 20,
+            "max_local_pair_trials": 1,
+        }
+    )
+    observation = {
+        "ui": {
+            "taskProgress": [{"description": "Investigate system"}],
+            "dialog_box": {"dialogIn": "", "dialogOptions": {}},
+            "inventoryObjects": [],
+            "accessibleEnvironmentObjects": [
+                {"uuid": 1, "name": "alpha 1", "description": "alpha"},
+                {"uuid": 2, "name": "beta 1", "description": "beta"},
+            ],
+            "nearbyObjects": {
+                "objects": {
+                    "north": [
+                        {
+                            "uuid": 3,
+                            "name": "gamma 1",
+                            "description": "gamma",
+                        }
+                    ]
+                }
+            },
+            "lastActionMessage": "",
+        }
+    }
+    actions = {
+        "USE": {"args": ["arg1", "arg2"]},
+        "TELEPORT_TO_OBJECT": {"args": ["arg1"]},
+        "DISCOVERY_FEED_GET_UPDATES": {"args": []},
+    }
+    context = ScientificContext("ctx", (), (), ())
+
+    first = policy.decide(observation, actions, {}, context)
+    second = policy.decide(observation, actions, {}, context)
+
+    assert first.action["action"] == "USE"
+    assert second.action == {
+        "action": "TELEPORT_TO_OBJECT",
+        "arg1": 3,
+    }
