@@ -339,12 +339,17 @@ def test_real_autonomous_seed0_reaches_generic_hypothesis(
         "last_actions": actions[-20:],
     }
 
-    assert generic_evidence, diagnostic
+    diagnostic_json = json.dumps(
+        diagnostic,
+        indent=2,
+        sort_keys=True,
+    )
+    assert generic_evidence, diagnostic_json
     assert any(
         len(event["evidence"]["entity_ids"]) >= 2
         for event in generic_evidence
-    ), diagnostic
-    assert generic_hypotheses, diagnostic
+    ), diagnostic_json
+    assert generic_hypotheses, diagnostic_json
 
 
 
