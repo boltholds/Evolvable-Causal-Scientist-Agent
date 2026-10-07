@@ -530,3 +530,46 @@ def test_location_becomes_novel_again_after_inventory_change() -> None:
         "lab-a",
         "lab-b",
     }
+
+
+
+def test_binary_evidence_is_participant_order_agnostic() -> None:
+    scientist = autonomy.AutonomousScientist()
+    evidence = (
+        _evidence(
+            "e1",
+            1,
+            (201, 301),
+            "feature",
+            12.5,
+            "probe response 12.5",
+        ),
+    )
+
+    assert scientist._common_input_keys(
+        (201,),
+        evidence,
+    ) == ("feature",)
+    assert scientist._latest_evidence(
+        evidence,
+        201,
+        "feature",
+        binary=True,
+    ) == evidence[0]
+
+
+
+def test_location_scheduler_prefers_less_visited_location() -> None:
+    scientist = autonomy.AutonomousScientist()
+    view = autonomy.AutonomousWorldView(
+        goal_text="Investigate alpha lab",
+        entities=(),
+        actions=(),
+        locations=("alpha lab", "beta lab"),
+        in_dialog=False,
+        dialog_options=(),
+    )
+
+    scientist._mark_location_visited(view, "alpha lab")
+
+    assert scientist._next_location(view) == "beta lab"
