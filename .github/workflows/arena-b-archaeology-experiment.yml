@@ -1,0 +1,107 @@
+name: arena-b-archaeology-experiment
+
+on:
+  push:
+    branches: [exp/arena-b-archaeology]
+
+concurrency:
+  group: arena-b-archaeology-experiment
+  cancel-in-progress: true
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install -e '.[discoveryworld]'
+      - name: Run unfamiliar-world Arena B
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+        run: |
+          python - <<'PY'
+          from collections import Counter
+          from dataclasses import asdict
+          from pathlib import Path
+          import json
+
+          from ecsa.benchmarks.discoveryworld.arena_b import run_autonomous_episode
+
+          out = Path("output/arena-b-archaeology-50")
+          result = run_autonomous_episode(
+              scenario="Archaeology Dating",
+              difficulty="Normal",
+              seed=0,
+              max_steps=50,
+              output_dir=out,
+              max_ground_actions=64,
+          )
+          print("ARENA_B_RESULT=" + json.dumps(asdict(result), sort_keys=True))
+
+          snapshot = json.loads((out / "world_contracts.json").read_text())
+          print("SNAPSHOT_META=" + json.dumps({
+              "scenario": snapshot["scenario"],
+              "difficulty": snapshot["difficulty"],
+              "seed": snapshot["seed"],
+              "contract_count": len(snapshot["contracts"]),
+          }, sort_keys=True))
+
+          for index, item in enumerate(snapshot["contracts"]):
+              contract = item["contract"]
+              summary = {
+                  "index": index,
+                  "fingerprint": item["canonical_fingerprint"],
+                  "contract_id": contract["contract_id"],
+                  "confidence": contract["confidence"],
+                  "status": contract["status"],
+                  "entity_type_count": len(contract["entity_types"]),
+                  "predicate_count": len(contract["predicates"]),
+                  "numeric_fluent_count": len(contract["numeric_fluents"]),
+                  "action_count": len(contract["actions"]),
+                  "action_symbols": sorted(
+                      action["source_schema_id"]
+                      for action in contract["actions"]
+                  ),
+                  "supporting_evidence_count": len(
+                      contract["supporting_evidence_ids"]
+                  ),
+                  "contradicting_evidence_count": len(
+                      contract["contradicting_evidence_ids"]
+                  ),
+              }
+              print("CONTRACT_SUMMARY=" + json.dumps(summary, sort_keys=True))
+
+          transitions = [
+              json.loads(line)
+              for line in (out / "raw_transitions.jsonl").read_text().splitlines()
+              if line.strip()
+          ]
+          action_counts = Counter(
+              row["action"]["schema_id"] for row in transitions
+          )
+          success_counts = Counter(
+              bool(row["outcome"]["success"]) for row in transitions
+          )
+          print("ACTION_COUNTS=" + json.dumps(action_counts, sort_keys=True))
+          print("SUCCESS_COUNTS=" + json.dumps({
+              str(key).lower(): value
+              for key, value in success_counts.items()
+          }, sort_keys=True))
+
+          updates = [
+              json.loads(line)
+              for line in (out / "world_model_updates.jsonl").read_text().splitlines()
+              if line.strip()
+          ]
+          failures = Counter(
+              failure["reason"]
+              for row in updates
+              for failure in row.get("learner_failures", [])
+          )
+          print("LEARNER_FAILURES=" + json.dumps(failures, sort_keys=True))
+          print("FINAL_UPDATE=" + json.dumps(updates[-1], sort_keys=True))
+          PY
