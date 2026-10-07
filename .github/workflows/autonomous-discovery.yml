@@ -25,6 +25,7 @@ jobs:
           SDL_AUDIODRIVER: dummy
         run: |
           pytest -q \
+            tests/test_world_model_contracts.py \
             tests/test_discoveryworld_environment.py \
             tests/test_discoveryworld_generic_evidence.py \
             tests/test_discoveryworld_generic_bridge.py \
