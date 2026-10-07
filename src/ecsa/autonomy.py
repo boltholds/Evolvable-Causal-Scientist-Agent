@@ -408,7 +408,9 @@ class AutonomousScientist:
         self._labels: dict[int, str] = {}
         self._descriptions: dict[int, str] = {}
         self._attempted: set[tuple] = set()
-        self._visited_locations: set[str] = set()
+        self._visited_location_contexts: set[
+            tuple[str, tuple[str, ...]]
+        ] = set()
         self._visited_objects: set[int] = set()
         self._pair_trials = 0
         self._pair_type_counts: dict[tuple[str, str], int] = {}
@@ -535,7 +537,7 @@ class AutonomousScientist:
         ):
             action = self._first_role(view, ActionRole.VISIT_LOCATION, 1)
             if action is not None:
-                self._visited_locations.add(location)
+                self._mark_location_visited(view, location)
                 return self._decision(
                     action_id=action.action_id,
                     location_arg=location,
@@ -679,7 +681,7 @@ class AutonomousScientist:
         if location is not None:
             action = self._first_role(view, ActionRole.VISIT_LOCATION, 1)
             if action is not None:
-                self._visited_locations.add(location)
+                self._mark_location_visited(view, location)
                 return self._decision(
                     action_id=action.action_id,
                     location_arg=location,
@@ -1395,14 +1397,42 @@ class AutonomousScientist:
             return 0.0
         return len(goal & entity_tokens) / len(entity_tokens)
 
+    def _inventory_signature(
+        self,
+        view: AutonomousWorldView,
+    ) -> tuple[str, ...]:
+        return tuple(
+            sorted(
+                {
+                    _base_name(entity.name)
+                    for entity in view.entities
+                    if entity.inventory and _base_name(entity.name)
+                }
+            )
+        )
+
+    def _mark_location_visited(
+        self,
+        view: AutonomousWorldView,
+        location: str,
+    ) -> None:
+        self._visited_location_contexts.add(
+            (location, self._inventory_signature(view))
+        )
+
     def _next_location(
         self,
         view: AutonomousWorldView,
     ) -> str | None:
+        inventory_signature = self._inventory_signature(view)
         candidates = [
             location
             for location in view.locations
-            if location not in self._visited_locations
+            if (
+                location,
+                inventory_signature,
+            )
+            not in self._visited_location_contexts
         ]
         if not candidates:
             return None
