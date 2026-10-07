@@ -143,3 +143,47 @@ def test_observe_grounding_records_failure_evidence_without_contract_guess() -> 
 
     assert update.new_evidence_ids == ("outcome-evidence",)
     assert kernel.contract_hypotheses() == ()
+
+
+
+def test_failed_actions_do_not_enter_positive_action_model_trace() -> None:
+    class RecordingLearner:
+        learner_id = "recording"
+
+        def __init__(self) -> None:
+            self.calls = []
+
+        def update(self, traces, current_contracts):
+            self.calls.append((traces, current_contracts))
+            from ecsa.world_model.learners.base import LearnerFailure
+            return LearnerFailure(
+                self.learner_id,
+                "record-only",
+            )
+
+    learner = RecordingLearner()
+    kernel = WorldModelAcquisitionKernel(
+        learners=(learner,),
+    )
+
+    for index in range(2):
+        outcome = ActionOutcomeEvidence(
+            evidence_id=f"failed-{index}",
+            schema_id="A17",
+            success=False,
+            arguments=(freeze_raw_value("x"),),
+        )
+        kernel.observe_grounding(
+            GroundingUpdate(
+                transition=GroundedTransition(
+                    transition_id=f"tf-{index}",
+                    schema_id="A17",
+                    feature_deltas=(),
+                    participation=(),
+                    outcome_evidence=outcome,
+                ),
+                identity_hypotheses=(),
+            )
+        )
+
+    assert learner.calls == []
