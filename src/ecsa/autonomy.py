@@ -374,6 +374,8 @@ class AutonomousScientist:
         self._dialog_entity: int | None = None
         self._pending_validation: tuple[str, int] | None = None
         self._put_attempted: set[tuple[str, int]] = set()
+        self._historical_preferred: set[int] = set()
+        self._placed_predictions: set[tuple[str, int]] = set()
 
     def decide(
         self,
@@ -388,6 +390,8 @@ class AutonomousScientist:
         for entity in view.entities:
             self._labels[entity.entity_id] = entity.name
             self._descriptions[entity.entity_id] = entity.description
+            if self._preferred_state(entity.name):
+                self._historical_preferred.add(entity.entity_id)
 
         self._resolve_pending(view)
 
@@ -667,9 +671,14 @@ class AutonomousScientist:
                     emit=emit,
                 )
 
+        placed_key = (
+            self._active.hypothesis_id,
+            prediction.control_entity_id,
+        )
         acquire = self._first_role(view, ActionRole.ACQUIRE, 1)
         if (
-            acquire is not None
+            placed_key not in self._placed_predictions
+            and acquire is not None
             and subject is not None
             and not subject.inventory
         ):
@@ -696,33 +705,27 @@ class AutonomousScientist:
                 )
 
         place = self._first_role(view, ActionRole.PLACE, 2)
-        put_key = (
-            self._active.hypothesis_id,
-            prediction.control_entity_id,
-        )
+        put_key = placed_key
         if (
             place is not None
+            and placed_key not in self._placed_predictions
             and subject is not None
             and subject.inventory
             and control is not None
             and put_key not in self._put_attempted
         ):
             self._put_attempted.add(put_key)
-            current_value = self._latest_value(
-                evidence,
-                prediction.control_entity_id,
-                self._active.control_feature_key,
-            )
-            validate = None
-            if (
-                current_value is not None
-                and abs(current_value - prediction.predicted_value)
-                <= self.control_tolerance
+            self._placed_predictions.add(placed_key)
+            for acquire_action in self._by_role(
+                view,
+                ActionRole.ACQUIRE,
+                arity=1,
             ):
-                validate = self._active.hypothesis_id
-                self._pending_validation = (
-                    self._active.hypothesis_id,
-                    prediction.control_entity_id,
+                self._attempted.discard(
+                    (
+                        acquire_action.action_id,
+                        prediction.subject_entity_id,
+                    )
                 )
             return self._decision(
                 action_id=place.action_id,
@@ -730,9 +733,11 @@ class AutonomousScientist:
                     prediction.subject_entity_id,
                     prediction.control_entity_id,
                 ),
-                reasoning="apply the predicted subject/control pairing",
+                reasoning=(
+                    "apply the predicted subject/control pairing before "
+                    "prospective control validation"
+                ),
                 emit=emit,
-                validate=validate,
             )
 
         observe = self._first_role(
@@ -865,6 +870,7 @@ class AutonomousScientist:
                 and self._active.hypothesis_id == hypothesis_id
             ):
                 self._active = None
+        self._placed_predictions.discard((hypothesis_id, entity_id))
         self._pending_validation = None
 
     def _discover_hypotheses(
@@ -1069,9 +1075,7 @@ class AutonomousScientist:
             references = tuple(
                 entity_id
                 for entity_id in ids
-                if self._preferred_state(
-                    self._labels.get(entity_id, "")
-                )
+                if entity_id in self._historical_preferred
             )
             targets = tuple(
                 entity_id
@@ -1087,16 +1091,11 @@ class AutonomousScientist:
         state = _state_text(label)
         if not state:
             return False
+        words = _tokens(state)
         return any(
-            token in state
-            for token in (
-                "success",
-                "complete",
-                "ready",
-                "activat",
-                "open",
-                " on ",
-            )
+            word in {"success", "successful", "complete", "completed", "ready", "open", "on"}
+            or word.startswith("activat")
+            for word in words
         )
 
     def _best_subject(
