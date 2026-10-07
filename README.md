@@ -123,6 +123,40 @@ python -m ecsa.benchmarks.discoveryworld.arena \
 The policy factory receives the JSON config and must return a `DiscoveryWorldActionPolicy`. Cold and reuse arms use the same factory/config hash; only persistent mechanism memory differs.
 
 
+A provider-neutral OpenAI-compatible policy is available at
+`ecsa.benchmarks.discoveryworld.policies.openai_compatible:create_policy`.
+API secrets are read from an environment variable named by `api_key_env`;
+they are never stored in the benchmark config or its deterministic hash.
+
+Example OpenRouter configuration:
+
+```json
+{
+  "model": "nvidia/nemotron-3-super-120b-a12b:free",
+  "base_url": "https://openrouter.ai/api/v1",
+  "api_key_env": "OPENROUTER_API_KEY",
+  "temperature": 0.0,
+  "max_tokens": 1800,
+  "max_attempts": 2,
+  "json_mode": true
+}
+```
+
+Install the explicit model-policy dependency with `.[llm]`, export the
+selected API-key environment variable, and use the same arena command with:
+
+```text
+--policy-factory ecsa.benchmarks.discoveryworld.policies.openai_compatible:create_policy
+--policy-config policy.json
+```
+
+The policy receives only agent-visible DiscoveryWorld state and ECSA scientific
+context. Structured source-backed hypotheses must name an exact current transfer
+candidate and public evidence ids; the policy adapter canonicalizes prospective
+prediction freeze steps and rejects unavailable actions or invented transfer
+sources before the environment is touched.
+
+
 TTT, BOCPD, and DreamCoder are now integrated as distinct repair paths: TTT proposes missing state/memory structure, BOCPD proposes temporal regime change, and DreamCoder proposes executable program mechanisms when the current mechanism form is insufficient. They can all be invoked from the same `TheorySpaceExpansionRequest` and return provenance-bearing proposals without overwriting the active theory population.
 
 The current DreamCoder integration intentionally starts with one Boolean-domain adapter. A synthesized program is no longer admitted from training fit alone: it must make a correct prospective prediction on held-out evidence that was not used during synthesis. Only then is a content-addressed program-mechanism theory created and assigned explicit small prior mass. The adapter can subsequently compete in the same IDS experiment set as BCS theories.

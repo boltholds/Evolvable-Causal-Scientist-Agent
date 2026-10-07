@@ -16,6 +16,7 @@ bocpd = ["bocd @ git+https://github.com/fiannai/bocd.git@0c09315e9102ddea885bb71
 dreamcoder = ["frozendict>=2,<3"]
 mlmd = ["ml-metadata==1.21.0"]
 discoveryworld = ["discoveryworld @ git+https://github.com/allenai/discoveryworld.git@fd591323920be0d3786ef350955de1945aa571e5"]
+llm = ["openai>=2,<4"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
