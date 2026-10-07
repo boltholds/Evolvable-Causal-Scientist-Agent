@@ -388,16 +388,20 @@ class AutonomousScientist:
         *,
         max_polynomial_degree: int = 2,
         max_pair_trials: int = 160,
+        max_local_pair_trials: int = 12,
         control_tolerance: float = 1.5,
     ) -> None:
         if not 0 <= max_polynomial_degree <= 4:
             raise ValueError("max_polynomial_degree must be in 0..4")
         if max_pair_trials < 1:
             raise ValueError("max_pair_trials must be positive")
+        if max_local_pair_trials < 1:
+            raise ValueError("max_local_pair_trials must be positive")
         if control_tolerance <= 0:
             raise ValueError("control_tolerance must be positive")
         self.max_degree = max_polynomial_degree
         self.max_pair_trials = max_pair_trials
+        self.max_local_pair_trials = max_local_pair_trials
         self.control_tolerance = float(control_tolerance)
 
         self._step = 0
@@ -408,6 +412,7 @@ class AutonomousScientist:
         self._visited_objects: set[int] = set()
         self._pair_trials = 0
         self._pair_type_counts: dict[tuple[str, str], int] = {}
+        self._local_pair_counts: dict[tuple[int, ...], int] = {}
         self._emitted: set[str] = set()
         self._failed: set[str] = set()
         self._completed_predictions: set[tuple[str, int]] = set()
@@ -574,9 +579,21 @@ class AutonomousScientist:
                     )
 
         binary = self._first_role(view, ActionRole.PROBE_BINARY, 2)
+        local_fingerprint = tuple(
+            sorted(
+                entity.entity_id
+                for entity in current.values()
+                if entity.accessible or entity.inventory
+            )
+        )
+        local_pair_count = self._local_pair_counts.get(
+            local_fingerprint,
+            0,
+        )
         if (
             binary is not None
             and self._pair_trials < self.max_pair_trials
+            and local_pair_count < self.max_local_pair_trials
         ):
             usable = [
                 entity
@@ -617,6 +634,9 @@ class AutonomousScientist:
                 )
                 self._pair_type_counts[pair_type] = (
                     self._pair_type_counts.get(pair_type, 0) + 1
+                )
+                self._local_pair_counts[local_fingerprint] = (
+                    local_pair_count + 1
                 )
                 return self._decision(
                     action_id=binary.action_id,
