@@ -952,6 +952,11 @@ class AutonomousScientist:
                         if fitted is None:
                             continue
                         coefficients, score = fitted
+                        score += self._control_feature_penalty(
+                            reference_ids,
+                            control_key,
+                            evidence,
+                        )
                         if preferred_degree == degree:
                             score -= 0.25
                         fits.append(
@@ -1139,6 +1144,53 @@ class AutonomousScientist:
             and item.entity_ids[0] == entity_id
         )
         return " ".join(parts)
+
+    @classmethod
+    def _control_feature_penalty(
+        cls,
+        entity_ids: tuple[int, ...],
+        feature_key: str,
+        evidence: tuple[GenericScalarEvidence, ...],
+    ) -> float:
+        samples = [
+            item
+            for item in evidence
+            if item.feature_key == feature_key
+            and item.entity_ids
+            and item.entity_ids[0] in entity_ids
+        ]
+        text = " ".join(item.raw_text.lower() for item in samples)
+        values = {round(item.value, 12) for item in samples}
+
+        penalty = 0.0
+        if any(
+            token in text
+            for token in (
+                "current",
+                "present",
+                "setting",
+                "value",
+                "level",
+                "state",
+            )
+        ):
+            penalty -= 0.5
+        if any(
+            token in text
+            for token in (
+                "range",
+                "minimum",
+                "maximum",
+                " min ",
+                " max ",
+                "allowable",
+                "allowed",
+            )
+        ):
+            penalty += 0.75
+        if len(values) <= 1:
+            penalty += 0.5
+        return penalty
 
     @staticmethod
     def _common_input_keys(

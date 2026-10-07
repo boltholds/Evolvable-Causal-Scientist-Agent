@@ -150,13 +150,33 @@ def run_episode(
                 )
             previous_generic = generic_frozen.get(generic.hypothesis_id)
             if previous_generic is None:
-                converted = bridge_generic_numeric_hypothesis(
-                    hypothesis=generic,
-                    generic_evidence=generic_ledger.evidence,
-                    measurements=sidecar.measurements,
-                )
                 generic_frozen[generic.hypothesis_id] = generic
-                bridged.append(converted)
+                try:
+                    converted = bridge_generic_numeric_hypothesis(
+                        hypothesis=generic,
+                        generic_evidence=generic_ledger.evidence,
+                        measurements=sidecar.measurements,
+                    )
+                except ValueError as exc:
+                    converted = None
+                    writer.append_jsonl(
+                        "scientific_events.jsonl",
+                        {
+                            "kind": "generic_qualification_rejected",
+                            "hypothesis_id": generic.hypothesis_id,
+                            "reason": str(exc),
+                        },
+                    )
+                if converted is not None:
+                    bridged.append(converted)
+                else:
+                    writer.append_jsonl(
+                        "scientific_events.jsonl",
+                        {
+                            "kind": "generic_qualification_unavailable",
+                            "hypothesis_id": generic.hypothesis_id,
+                        },
+                    )
                 writer.append_jsonl(
                     "scientific_events.jsonl",
                     {
@@ -190,11 +210,27 @@ def run_episode(
                     f"hypothesis_id reused with different content: {hypothesis.hypothesis_id}"
                 )
 
+        bridgeable_generic_validation_ids = tuple(
+            hypothesis_id
+            for hypothesis_id
+            in decision.generic_validation_hypothesis_ids
+            if hypothesis_id in frozen
+        )
+        for hypothesis_id in decision.generic_validation_hypothesis_ids:
+            if hypothesis_id not in frozen:
+                writer.append_jsonl(
+                    "scientific_events.jsonl",
+                    {
+                        "kind": "generic_validation_unavailable",
+                        "hypothesis_id": hypothesis_id,
+                    },
+                )
+
         validation_hypothesis_ids = tuple(
             dict.fromkeys(
                 (
                     *decision.validation_hypothesis_ids,
-                    *decision.generic_validation_hypothesis_ids,
+                    *bridgeable_generic_validation_ids,
                 )
             )
         )

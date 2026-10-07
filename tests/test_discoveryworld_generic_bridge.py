@@ -81,3 +81,64 @@ def test_generic_numeric_hypothesis_bridges_only_through_public_measurements(
     params = dict(annotated.parameters)
     assert params["transfer_key"] == "scalar-interaction-to-control"
     assert params["generic_degree"] == 1
+
+
+
+def test_generic_constant_hypothesis_can_bridge_as_zero_slope() -> None:
+    generic = (
+        GenericScalarEvidence(
+            "g1", 1, "USE", (10, 20), "f", 7.0, "value 7"
+        ),
+        GenericScalarEvidence(
+            "g2", 2, "USE", (10, 21), "f", 9.0, "value 9"
+        ),
+    )
+    measurements = (
+        ReactorMeasurement(
+            "m1", 1, "ctx", 20, "subject 1", 10, "tool",
+            MeasurementKind.DENSITY, (7.0,), "value 7"
+        ),
+        ReactorMeasurement(
+            "m2", 2, "ctx", 21, "subject 2", 10, "tool",
+            MeasurementKind.DENSITY, (9.0,), "value 9"
+        ),
+    )
+    hypothesis = GenericNumericHypothesis(
+        hypothesis_id="constant",
+        transfer_key="scalar-interaction-to-control",
+        feature_key="f",
+        control_feature_key="c",
+        polynomial_degree=0,
+        coefficients=(42.0,),
+        source_evidence_ids=("g1", "g2"),
+        predictions=(GenericNumericPrediction(22, 30, 42.0, 3),),
+    )
+
+    bridged = bridge_generic_numeric_hypothesis(
+        hypothesis=hypothesis,
+        generic_evidence=generic,
+        measurements=measurements,
+    )
+
+    assert bridged is not None
+    assert bridged.slope == 0.0
+    assert bridged.offset == 42.0
+
+
+def test_generic_higher_order_hypothesis_stays_unqualified() -> None:
+    hypothesis = GenericNumericHypothesis(
+        hypothesis_id="quadratic",
+        transfer_key="scalar-interaction-to-control",
+        feature_key="f",
+        control_feature_key="c",
+        polynomial_degree=2,
+        coefficients=(1.0, 2.0, 3.0),
+        source_evidence_ids=("g1", "g2"),
+        predictions=(GenericNumericPrediction(22, 30, 10.0, 3),),
+    )
+
+    assert bridge_generic_numeric_hypothesis(
+        hypothesis=hypothesis,
+        generic_evidence=(),
+        measurements=(),
+    ) is None

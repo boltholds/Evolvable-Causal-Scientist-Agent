@@ -389,11 +389,9 @@ def bridge_generic_numeric_hypothesis(
     hypothesis: GenericNumericHypothesis,
     generic_evidence: tuple[GenericScalarEvidence, ...],
     measurements: tuple[ReactorMeasurement, ...],
-) -> ReactorMechanismHypothesis:
-    if hypothesis.polynomial_degree != 1:
-        raise ValueError(
-            "Reactor Lab qualification currently supports degree-1 generic programs"
-        )
+) -> ReactorMechanismHypothesis | None:
+    if hypothesis.polynomial_degree not in (0, 1):
+        return None
     evidence_by_id = {
         item.evidence_id: item
         for item in generic_evidence
@@ -435,7 +433,11 @@ def bridge_generic_numeric_hypothesis(
         )
     [kind] = kinds
 
-    offset, slope = hypothesis.coefficients
+    if hypothesis.polynomial_degree == 0:
+        offset = hypothesis.coefficients[0]
+        slope = 0.0
+    else:
+        offset, slope = hypothesis.coefficients
     return ReactorMechanismHypothesis(
         hypothesis_id=hypothesis.hypothesis_id,
         measurement_kind=kind,
