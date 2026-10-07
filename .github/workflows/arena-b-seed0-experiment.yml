@@ -42,7 +42,7 @@ jobs:
           from ecsa.world_model.perception.structured import StructuredObservationFrontend
 
           SEED = 0
-          MAX_STEPS = 250
+          MAX_STEPS = 60
           MAX_GROUND_ACTIONS = 64
 
           environment = DiscoveryWorldRawEnvironment.reactor_lab_normal(
