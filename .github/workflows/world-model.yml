@@ -1,0 +1,35 @@
+name: world-model
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: world-model-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  world-model:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install -e '.[test]'
+      - name: Test world model
+        run: |
+          mapfile -t files < <(
+            find tests -maxdepth 1 -type f \(
+              -name 'test_world_model_*.py' -o \
+              -name 'test_world_contract_*.py' -o \
+              -name 'test_autonomous_scientist.py' \
+            \) -print | sort
+          )
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No world-model tests found"
+            exit 1
+          fi
+          python -m pytest -q "${files[@]}"
