@@ -7,7 +7,7 @@ from enum import StrEnum
 from hashlib import sha256
 from itertools import permutations
 
-from ecsa.mechanisms import MechanismRecord, MechanismVersionRef
+from ecsa.mechanisms import MechanismVersionRef
 
 
 _TOKEN = re.compile(r"[a-z0-9]+", re.IGNORECASE)
@@ -89,6 +89,27 @@ class AutonomousWorldView:
             raise ValueError("locations must be immutable")
         if not isinstance(self.dialog_options, tuple):
             raise ValueError("dialog options must be immutable")
+
+
+@dataclass(frozen=True)
+class TransferMechanismView:
+    ref: MechanismVersionRef
+    transfer_key: str
+    preferred_degree: int | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.ref, MechanismVersionRef):
+            raise ValueError("typed mechanism reference required")
+        if not self.transfer_key:
+            raise ValueError("transfer_key is required")
+        if (
+            self.preferred_degree is not None
+            and (
+                type(self.preferred_degree) is not int
+                or not 0 <= self.preferred_degree <= 4
+            )
+        ):
+            raise ValueError("preferred_degree must be None or in 0..4")
 
 
 @dataclass(frozen=True)
@@ -336,10 +357,6 @@ def _fit_polynomial(
     return coefficients, score
 
 
-def _parameter_map(mechanism: MechanismRecord) -> dict[str, object]:
-    return {name: value for name, value in mechanism.parameters}
-
-
 class AutonomousScientist:
     """Environment-neutral evidence-driven controller."""
 
@@ -381,7 +398,7 @@ class AutonomousScientist:
         self,
         view: AutonomousWorldView,
         evidence: tuple[GenericScalarEvidence, ...],
-        transfer_candidates: tuple[MechanismRecord, ...],
+        transfer_candidates: tuple[TransferMechanismView, ...],
     ) -> AutonomousDecision:
         entity_map = {
             entity.entity_id: entity
@@ -475,7 +492,7 @@ class AutonomousScientist:
     def _explore(
         self,
         view: AutonomousWorldView,
-        transfer_candidates: tuple[MechanismRecord, ...],
+        transfer_candidates: tuple[TransferMechanismView, ...],
         current: dict[int, PublicEntityView],
     ) -> AutonomousDecision:
         structural_prior = (
@@ -876,18 +893,18 @@ class AutonomousScientist:
     def _discover_hypotheses(
         self,
         evidence: tuple[GenericScalarEvidence, ...],
-        transfer_candidates: tuple[MechanismRecord, ...],
+        transfer_candidates: tuple[TransferMechanismView, ...],
         view: AutonomousWorldView,
     ) -> tuple[GenericNumericHypothesis, ...]:
         if len(evidence) < 4:
             return ()
 
         source = self._transfer_source(transfer_candidates)
-        preferred_degree = None
-        if source is not None:
-            raw = _parameter_map(source).get("generic_degree")
-            if type(raw) is int:
-                preferred_degree = raw
+        preferred_degree = (
+            source.preferred_degree
+            if source is not None
+            else None
+        )
 
         hypotheses: list[tuple[float, GenericNumericHypothesis]] = []
         for reference_ids, target_ids in self._control_groups(evidence):
@@ -1307,7 +1324,7 @@ class AutonomousScientist:
 
     @staticmethod
     def _transfer_source(
-        transfer_candidates: tuple[MechanismRecord, ...],
+        transfer_candidates: tuple[TransferMechanismView, ...],
     ) -> MechanismRecord | None:
         for mechanism in transfer_candidates:
             if (
