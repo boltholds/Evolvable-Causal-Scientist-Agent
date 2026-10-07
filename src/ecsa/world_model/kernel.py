@@ -8,6 +8,14 @@ from .hypotheses import (
     WorldContractHypothesis,
 )
 from .memory import WorldContractStore
+from .learners.base import (
+    AcquisitionActionStep,
+    AcquisitionTrace,
+    ActionModelLearner,
+    ActionModelProposal,
+    LearnerFailure,
+    proposal_to_world_contract,
+)
 
 
 @dataclass(frozen=True)
@@ -16,6 +24,7 @@ class WorldModelUpdate:
     added_contract_ids: tuple[str, ...] = ()
     updated_contract_ids: tuple[str, ...] = ()
     rejected_contract_ids: tuple[str, ...] = ()
+    learner_failures: tuple[LearnerFailure, ...] = ()
     contracts: tuple[WorldContractHypothesis, ...] = ()
 
 
@@ -25,13 +34,18 @@ class WorldModelAcquisitionKernel:
         *,
         store: WorldContractStore | None = None,
         max_contracts: int = 64,
+        learners: tuple[ActionModelLearner, ...] = (),
     ) -> None:
         if type(max_contracts) is not int or max_contracts < 1:
             raise ValueError("max_contracts must be positive")
         self.store = store
         self.max_contracts = max_contracts
+        if not isinstance(learners, tuple):
+            raise TypeError("learners must be an immutable tuple")
+        self.learners = learners
         self._contracts: dict[str, WorldContractHypothesis] = {}
         self._grounding_evidence_ids: list[str] = []
+        self._acquisition_steps: list[AcquisitionActionStep] = []
 
     def observe_grounding(
         self,
@@ -59,8 +73,59 @@ class WorldModelAcquisitionKernel:
             if evidence_id not in self._grounding_evidence_ids
         )
         self._grounding_evidence_ids.extend(unique_new)
+
+        participation = tuple(
+            sorted(
+                update.transition.participation,
+                key=lambda value: value.argument_index,
+            )
+        )
+        self._acquisition_steps.append(
+            AcquisitionActionStep(
+                schema_id=update.transition.schema_id,
+                object_refs=tuple(
+                    str(item.argument_value.thaw())
+                    for item in participation
+                ),
+                evidence_id=(
+                    update.transition.outcome_evidence.evidence_id
+                ),
+            )
+        )
+
+        added: list[str] = []
+        updated: list[str] = []
+        failures: list[LearnerFailure] = []
+        if len(self._acquisition_steps) >= 2:
+            trace = AcquisitionTrace(
+                trace_id="online",
+                steps=tuple(self._acquisition_steps),
+            )
+            for learner in self.learners:
+                result = learner.update(
+                    (trace,),
+                    self.contract_hypotheses(),
+                )
+                if isinstance(result, LearnerFailure):
+                    failures.append(result)
+                    continue
+                if not isinstance(result, ActionModelProposal):
+                    raise TypeError(
+                        "action model learners must return typed results"
+                    )
+                contract = proposal_to_world_contract(result)
+                existed = contract.contract_id in self._contracts
+                ingest = self.ingest_proposals((contract,))
+                if existed:
+                    updated.extend(ingest.updated_contract_ids)
+                else:
+                    added.extend(ingest.added_contract_ids)
+
         return WorldModelUpdate(
             new_evidence_ids=unique_new,
+            added_contract_ids=tuple(dict.fromkeys(added)),
+            updated_contract_ids=tuple(dict.fromkeys(updated)),
+            learner_failures=tuple(failures),
             contracts=self.contract_hypotheses(),
         )
 
