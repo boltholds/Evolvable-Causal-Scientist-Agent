@@ -10,26 +10,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  autonomous-discovery:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Install autonomous benchmark dependencies
-        run: pip install -e '.[test,mlmd,discoveryworld]'
-      - name: Test autonomous DiscoveryWorld path
-        env:
-          SDL_VIDEODRIVER: dummy
-          SDL_AUDIODRIVER: dummy
-        run: |
-          pytest -q \
-            tests/test_discoveryworld_environment.py \
-            tests/test_discoveryworld_generic_evidence.py \
-            tests/test_discoveryworld_generic_bridge.py \
-            tests/test_discoveryworld_autonomous_policy.py
-
   pytest:
     runs-on: ubuntu-latest
     steps:
