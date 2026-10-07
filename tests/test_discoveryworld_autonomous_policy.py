@@ -354,3 +354,43 @@ def test_empty_terminal_dialog_is_not_actionable() -> None:
     assert decision.action == {
         "action": "DISCOVERY_FEED_GET_UPDATES"
     }
+
+
+
+def test_binary_probe_prioritizes_unseen_type_pairs() -> None:
+    policy = AutonomousScientistPolicy(
+        {
+            "max_polynomial_degree": 2,
+            "max_pair_trials": 8,
+        }
+    )
+    entities = [
+        {"uuid": 1, "name": "alpha 1", "description": "alpha"},
+        {"uuid": 2, "name": "alpha 2", "description": "alpha"},
+        {"uuid": 3, "name": "beta 1", "description": "beta"},
+        {"uuid": 4, "name": "gamma 1", "description": "gamma"},
+    ]
+    observation = _observation(entities, task="Investigate system")
+    actions = {
+        "USE": {"args": ["arg1", "arg2"]},
+        "DISCOVERY_FEED_GET_UPDATES": {"args": []},
+    }
+    context = ScientificContext("ctx", (), (), ())
+
+    decisions = [
+        policy.decide(observation, actions, {}, context)
+        for _ in range(3)
+    ]
+
+    type_pairs = []
+    by_id = {item["uuid"]: item["name"].split()[0] for item in entities}
+    for decision in decisions:
+        assert decision.action["action"] == "USE"
+        type_pairs.append(
+            (
+                by_id[decision.action["arg1"]],
+                by_id[decision.action["arg2"]],
+            )
+        )
+
+    assert len(set(type_pairs)) == 3
