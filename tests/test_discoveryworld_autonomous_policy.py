@@ -111,9 +111,9 @@ def test_autonomous_policy_discovers_numeric_program_from_neutral_evidence() -> 
         _evidence("i3", 3, (301, 203), "input", 3.0, "probe sample 3"),
         _evidence("o1", 4, (101,), "output", 12.0, "controller #1 current 12", "TALK"),
         _evidence("o2", 5, (102,), "output", 22.0, "controller #2 current 22", "TALK"),
-        _evidence("a1", 4, (101,), "identity", 1.0, "controller #1 current 12", "TALK"),
-        _evidence("a2", 5, (102,), "identity", 2.0, "controller #2 current 22", "TALK"),
-        _evidence("a3", 6, (103,), "identity", 3.0, "controller #3 current 50", "TALK"),
+        _evidence("a1", 4, (101,), "identity", 1.0, "controller identity 1", "TALK"),
+        _evidence("a2", 5, (102,), "identity", 2.0, "controller identity 2", "TALK"),
+        _evidence("a3", 6, (103,), "identity", 3.0, "controller identity 3", "TALK"),
     )
     context = ScientificContext(
         "ctx",
@@ -165,13 +165,5 @@ def test_transfer_candidate_is_structural_prior_not_feature_answer() -> None:
             ("generic_feature_key", "old-feature"),
         ),
     )
-    policy = AutonomousScientistPolicy({})
-    context = ScientificContext(
-        "new",
-        (),
-        (source,),
-        (),
-        generic_evidence=(),
-    )
-
-    assert policy._transfer_source(context) == source
+    scientist = autonomy.AutonomousScientist()
+    assert scientist._transfer_source((source,)) == source
