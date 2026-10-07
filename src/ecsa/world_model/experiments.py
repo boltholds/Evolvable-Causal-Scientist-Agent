@@ -209,7 +209,12 @@ class ContractExperimentCoordinator:
             raise TypeError("budget must be ExperimentBudget")
 
         entity_candidates = _entity_argument_candidates(perception)
-        experiments: list[ContractExperiment] = []
+        streams: list[
+            tuple[
+                RawActionSchema,
+                object,
+            ]
+        ] = []
         for schema in sorted(
             action_schemas,
             key=lambda value: value.schema_id,
@@ -228,13 +233,28 @@ class ContractExperimentCoordinator:
                 candidate_sets.append(values)
             if not viable:
                 continue
-
-            combinations = (
+            combinations = iter(
                 product(*candidate_sets)
                 if candidate_sets
                 else ((),)
             )
-            for combination in combinations:
+            streams.append((schema, combinations))
+
+        experiments: list[ContractExperiment] = []
+        active = streams
+        while active and len(experiments) < budget.max_ground_actions:
+            next_active: list[
+                tuple[
+                    RawActionSchema,
+                    object,
+                ]
+            ] = []
+            for schema, combinations in active:
+                try:
+                    combination = next(combinations)  # type: ignore[arg-type]
+                except StopIteration:
+                    continue
+
                 action = GroundAction(
                     schema_id=schema.schema_id,
                     arguments=tuple(combination),
@@ -259,8 +279,10 @@ class ContractExperimentCoordinator:
                         predictions=predictions,
                     )
                 )
+                next_active.append((schema, combinations))
                 if len(experiments) >= budget.max_ground_actions:
-                    return tuple(experiments)
+                    break
+            active = next_active
         return tuple(experiments)
 
     def select(
