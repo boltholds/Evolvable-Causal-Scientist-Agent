@@ -1,0 +1,193 @@
+name: Arena B seed0 experiment
+
+on:
+  push:
+    branches: [experiment/arena-b-seed0-short-20261007]
+
+concurrency:
+  group: arena-b-seed0-short-experiment
+  cancel-in-progress: true
+
+jobs:
+  experiment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install -e '.[test,discoveryworld]'
+      - name: Run Arena B seed 0
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+
+          import json
+          from collections import Counter
+          from dataclasses import asdict
+
+          from ecsa.autonomy.scientist import AutonomousScientist
+          from ecsa.benchmarks.discoveryworld.perception import DiscoveryWorldStructuredDecoder
+          from ecsa.benchmarks.discoveryworld.raw_environment import DiscoveryWorldRawEnvironment
+          from ecsa.world_model.canonical import canonicalize_world_contract
+          from ecsa.world_model.contracts import InteractionTransition, freeze_raw_value
+          from ecsa.world_model.experiments import ContractExperimentCoordinator, ExperimentBudget
+          from ecsa.world_model.kernel import WorldModelAcquisitionKernel
+          from ecsa.world_model.learners.locm2 import Locm2Learner
+          from ecsa.world_model.perception.structured import StructuredObservationFrontend
+
+          SEED = 0
+          MAX_STEPS = 60
+          MAX_GROUND_ACTIONS = 64
+
+          environment = DiscoveryWorldRawEnvironment.reactor_lab_normal(
+              SEED,
+              max_steps=MAX_STEPS,
+          )
+          world_model = WorldModelAcquisitionKernel(
+              learners=(Locm2Learner(),),
+          )
+          scientist = AutonomousScientist(
+              world_model=world_model,
+              experiments=ContractExperimentCoordinator(),
+              perception=StructuredObservationFrontend(
+                  DiscoveryWorldStructuredDecoder()
+              ),
+          )
+          budget = ExperimentBudget(
+              max_ground_actions=MAX_GROUND_ACTIONS,
+          )
+
+          chosen = Counter()
+          successes = Counter()
+          failures = Counter()
+          learner_failures = Counter()
+          evidence_ids = set()
+          contract_first_seen = {}
+          transition_count = 0
+
+          while not environment.done and environment.steps < MAX_STEPS:
+              before = environment.observe_raw()
+              actions = environment.list_raw_actions()
+              experiment = scientist.choose_experiment(
+                  observation=before,
+                  actions=actions,
+                  goal=freeze_raw_value(
+                      {"public_observation": before.payload.thaw()}
+                  ),
+                  budget=budget,
+              )
+              chosen[experiment.action.schema_id] += 1
+
+              outcome = environment.execute_raw_action(experiment.action)
+              if outcome.success:
+                  successes[experiment.action.schema_id] += 1
+              else:
+                  failures[experiment.action.schema_id] += 1
+
+              after = environment.observe_raw()
+              transition = InteractionTransition(
+                  transition_id=f"arena-b:{SEED}:{transition_count}",
+                  before=before,
+                  action=experiment.action,
+                  outcome=outcome,
+                  after=after,
+              )
+              update = scientist.observe_transition(transition)
+              evidence_ids.update(update.new_evidence_ids)
+              for failure in update.learner_failures:
+                  learner_failures[failure.reason] += 1
+              for contract in update.contracts:
+                  contract_first_seen.setdefault(
+                      contract.contract_id,
+                      environment.steps,
+                  )
+              transition_count += 1
+
+              if transition_count % 25 == 0:
+                  print(
+                      "PROGRESS",
+                      json.dumps(
+                          {
+                              "steps": environment.steps,
+                              "transitions": transition_count,
+                              "contracts": len(world_model.contract_hypotheses()),
+                              "evidence": len(evidence_ids),
+                              "top_actions": chosen.most_common(8),
+                          },
+                          sort_keys=True,
+                      ),
+                  )
+
+          contracts = world_model.contract_hypotheses()
+          contract_rows = []
+          for contract in contracts:
+              canonical = canonicalize_world_contract(contract)
+              contract_rows.append(
+                  {
+                      "contract_id": contract.contract_id,
+                      "canonical_fingerprint": canonical.fingerprint,
+                      "status": contract.status.value,
+                      "confidence": contract.confidence,
+                      "supporting_evidence_count": len(
+                          contract.supporting_evidence_ids
+                      ),
+                      "contradicting_evidence_count": len(
+                          contract.contradicting_evidence_ids
+                      ),
+                      "entity_type_count": len(contract.entity_types),
+                      "predicate_count": len(contract.predicates),
+                      "numeric_fluent_count": len(contract.numeric_fluents),
+                      "argument_role_count": len(contract.argument_roles),
+                      "affordance_count": len(contract.affordances),
+                      "actions": [
+                          {
+                              "source_schema_id": action.source_schema_id,
+                              "parameter_count": len(action.parameter_type_ids),
+                              "preconditions": len(
+                                  action.precondition_predicate_ids
+                              ),
+                              "add_effects": len(
+                                  action.add_effect_predicate_ids
+                              ),
+                              "delete_effects": len(
+                                  action.delete_effect_predicate_ids
+                              ),
+                              "numeric_effects": len(action.numeric_effect_ids),
+                              "symmetric_parameter_groups": [
+                                  list(group)
+                                  for group in action.symmetric_parameter_groups
+                              ],
+                          }
+                          for action in contract.actions
+                      ],
+                      "first_seen_step": contract_first_seen.get(
+                          contract.contract_id
+                      ),
+                  }
+              )
+
+          summary = {
+              "seed": SEED,
+              "max_steps": MAX_STEPS,
+              "steps": environment.steps,
+              "transitions": transition_count,
+              "done": environment.done,
+              "grounding_evidence_count": len(evidence_ids),
+              "contract_count": len(contracts),
+              "chosen_actions": dict(chosen),
+              "successful_actions": dict(successes),
+              "failed_actions": dict(failures),
+              "learner_failures": dict(learner_failures),
+              "contracts": contract_rows,
+          }
+
+          print("ARENA_B_EXPERIMENT_RESULT_BEGIN")
+          print(json.dumps(summary, indent=2, sort_keys=True))
+          print("ARENA_B_EXPERIMENT_RESULT_END")
+          PY
