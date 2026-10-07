@@ -1173,9 +1173,10 @@ class AutonomousScientist:
         evidence: tuple[GenericScalarEvidence, ...],
     ) -> int | None:
         candidates = {
-            item.entity_ids[-1]
+            entity_id
             for item in evidence
             if len(item.entity_ids) >= 2
+            for entity_id in item.entity_ids
         }
         control_text = self._entity_text(control_id, evidence)
         ranked = sorted(
@@ -1270,7 +1271,7 @@ class AutonomousScientist:
                 item.feature_key
                 for item in evidence
                 if len(item.entity_ids) >= 2
-                and item.entity_ids[-1] == subject_id
+                and subject_id in item.entity_ids
             }
             for subject_id in subject_ids
         ]
@@ -1311,7 +1312,7 @@ class AutonomousScientist:
                 (
                     binary
                     and len(item.entity_ids) >= 2
-                    and item.entity_ids[-1] == entity_id
+                    and entity_id in item.entity_ids
                 )
                 or (
                     not binary
