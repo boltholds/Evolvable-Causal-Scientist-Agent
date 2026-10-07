@@ -407,6 +407,7 @@ class AutonomousScientist:
         self._visited_locations: set[str] = set()
         self._visited_objects: set[int] = set()
         self._pair_trials = 0
+        self._pair_type_counts: dict[tuple[str, str], int] = {}
         self._emitted: set[str] = set()
         self._failed: set[str] = set()
         self._completed_predictions: set[tuple[str, int]] = set()
@@ -585,6 +586,13 @@ class AutonomousScientist:
             pair_candidates = sorted(
                 permutations(usable, 2),
                 key=lambda pair: (
+                    self._pair_type_counts.get(
+                        (
+                            _base_name(pair[0].name),
+                            _base_name(pair[1].name),
+                        ),
+                        0,
+                    ),
                     -max(
                         self._relevance(view, pair[0]),
                         self._relevance(view, pair[1]),
@@ -603,6 +611,13 @@ class AutonomousScientist:
                     continue
                 self._attempted.add(signature)
                 self._pair_trials += 1
+                pair_type = (
+                    _base_name(left.name),
+                    _base_name(right.name),
+                )
+                self._pair_type_counts[pair_type] = (
+                    self._pair_type_counts.get(pair_type, 0) + 1
+                )
                 return self._decision(
                     action_id=binary.action_id,
                     entity_args=(
