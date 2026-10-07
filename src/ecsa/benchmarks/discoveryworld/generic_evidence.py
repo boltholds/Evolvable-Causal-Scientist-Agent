@@ -3,9 +3,10 @@ from __future__ import annotations
 import re
 from hashlib import sha256
 
+from ecsa.autonomy import GenericScalarEvidence
+
 from .contracts import (
     ActionPacket,
-    GenericScalarEvidence,
     JSONValue,
 )
 
