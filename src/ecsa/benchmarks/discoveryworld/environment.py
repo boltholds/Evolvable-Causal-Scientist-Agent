@@ -37,20 +37,18 @@ class DiscoveryWorldEnvironmentAdapter:
         self._steps = 0
 
     @classmethod
-    def reactor_lab_normal(
+    def load(
         cls,
-        seed: int,
         *,
+        scenario: str,
+        difficulty: str,
+        seed: int,
         max_steps: int = 1000,
         thread_id: int = 0,
     ) -> "DiscoveryWorldEnvironmentAdapter":
-        if type(seed) is not int or seed not in range(5):
-            raise ValueError(
-                "Reactor Lab benchmark seed must be one of 0, 1, 2, 3, 4"
-            )
         config = DiscoveryWorldEpisodeConfig(
-            scenario="Reactor Lab",
-            difficulty="Normal",
+            scenario=scenario,
+            difficulty=difficulty,
             seed=seed,
             max_steps=max_steps,
         )
@@ -63,9 +61,30 @@ class DiscoveryWorldEnvironmentAdapter:
         )
         if not loaded:
             raise RuntimeError(
-                "DiscoveryWorld failed to load Reactor Lab / Normal"
+                "DiscoveryWorld failed to load "
+                f"{config.scenario} / {config.difficulty}"
             )
         return cls(api, config)
+
+    @classmethod
+    def reactor_lab_normal(
+        cls,
+        seed: int,
+        *,
+        max_steps: int = 1000,
+        thread_id: int = 0,
+    ) -> "DiscoveryWorldEnvironmentAdapter":
+        if type(seed) is not int or seed not in range(5):
+            raise ValueError(
+                "Reactor Lab benchmark seed must be one of 0, 1, 2, 3, 4"
+            )
+        return cls.load(
+            scenario="Reactor Lab",
+            difficulty="Normal",
+            seed=seed,
+            max_steps=max_steps,
+            thread_id=thread_id,
+        )
 
     def observe(self) -> dict[str, JSONValue]:
         observation = self._api.getAgentObservation(agentIdx=0)
