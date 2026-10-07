@@ -21,15 +21,25 @@ jobs:
         run: pip install -e '.[test]'
       - name: Test world model
         run: |
-          mapfile -t files < <(
-            find tests -maxdepth 1 -type f \(
-              -name 'test_world_model_*.py' -o \
-              -name 'test_world_contract_*.py' -o \
-              -name 'test_autonomous_scientist.py' \
-            \) -print | sort
+          python - <<'PY'
+          from pathlib import Path
+          import subprocess
+          import sys
+
+          patterns = (
+              "test_world_model_*.py",
+              "test_world_contract_*.py",
+              "test_autonomous_scientist.py",
           )
-          if [ "${#files[@]}" -eq 0 ]; then
-            echo "No world-model tests found"
-            exit 1
-          fi
-          python -m pytest -q "${files[@]}"
+          files = sorted({
+              path
+              for pattern in patterns
+              for path in Path("tests").glob(pattern)
+          })
+          if not files:
+              raise SystemExit("No world-model tests found")
+          subprocess.run(
+              [sys.executable, "-m", "pytest", "-q", *map(str, files)],
+              check=True,
+          )
+          PY
