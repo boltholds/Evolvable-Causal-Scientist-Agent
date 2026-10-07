@@ -636,6 +636,29 @@ This replaces hand-authored heuristics such as:
 
 Those may remain debugging baselines only.
 
+### 12.1 Future Bayesian OED backend — Pyro
+
+The default scheduler uses ECSA's existing `ScienceKernel` for exact
+information gain over discrete competing world contracts and a lightweight
+structural-uncertainty prior while the contract population is not yet
+informative.
+
+Reserve Pyro OED as an optional future backend for the stage where ECSA has a
+probabilistic generative world model of the form:
+
+```text
+p(observation | latent mechanism, experiment design)
+```
+
+A future `PyroOEDBackend` may estimate expected information gain for
+continuous, noisy, or high-dimensional experiment designs. It must remain
+behind the world-model experiment-selection boundary and must not replace the
+core `ScienceKernel` contract.
+
+Pyro/PyTorch are not dependencies of World Model Acquisition v1 and must not be
+added to the default ECSA installation. If implemented, they belong to a
+separate optional dependency extra.
+
 ## 13. Integration with existing ECSA subsystems
 
 ### 13.1 TTT

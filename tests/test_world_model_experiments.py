@@ -1,12 +1,15 @@
 from ecsa.contracts import TheoryPosterior, TheoryRef
 from ecsa.science import ScienceKernel
 from ecsa.world_model.contracts import (
+    GroundAction,
     RawActionParameter,
     RawActionSchema,
     freeze_raw_value,
 )
 from ecsa.world_model.experiments import (
+    ContractExperiment,
     ContractExperimentCoordinator,
+    ContractOutcomePrediction,
     ExperimentBudget,
 )
 from ecsa.world_model.hypotheses import (
@@ -307,3 +310,154 @@ def test_entity_refs_fill_untyped_action_candidates() -> None:
         experiment.action.arguments[0].thaw()
         for experiment in experiments
     } == {"entity-a", "entity-b"}
+
+
+
+def _unary_schema(
+    schema_id: str,
+    *values: str,
+) -> RawActionSchema:
+    return RawActionSchema(
+        schema_id=schema_id,
+        parameters=(
+            RawActionParameter(
+                name="arg0",
+                public_candidates=tuple(
+                    freeze_raw_value(value)
+                    for value in values
+                ),
+            ),
+        ),
+        public_metadata=freeze_raw_value({}),
+    )
+
+
+def test_candidate_budget_covers_distinct_raw_schemas_before_repeating_one() -> None:
+    coordinator = ContractExperimentCoordinator()
+
+    experiments = coordinator.propose(
+        contracts=(),
+        action_schemas=(
+            _unary_schema("A", "a1", "a2", "a3", "a4"),
+            _unary_schema("B", "b1", "b2"),
+            _unary_schema("C", "c1", "c2"),
+        ),
+        perception=_empty_perception(),
+        budget=ExperimentBudget(max_ground_actions=3),
+    )
+
+    assert {
+        experiment.action.schema_id
+        for experiment in experiments
+    } == {"A", "B", "C"}
+
+
+def test_bootstrap_selection_prefers_unobserved_schema_after_failure() -> None:
+    coordinator = ContractExperimentCoordinator()
+    schemas = (
+        RawActionSchema(
+            schema_id="A",
+            parameters=(),
+            public_metadata=freeze_raw_value({}),
+        ),
+        RawActionSchema(
+            schema_id="B",
+            parameters=(),
+            public_metadata=freeze_raw_value({}),
+        ),
+    )
+    experiments = coordinator.propose(
+        contracts=(),
+        action_schemas=schemas,
+        perception=_empty_perception(),
+        budget=ExperimentBudget(max_ground_actions=4),
+    )
+    first = coordinator.select_bootstrap(experiments)
+    coordinator.record_outcome(
+        first.action,
+        success=False,
+    )
+    second = coordinator.select_bootstrap(
+        coordinator.propose(
+            contracts=(),
+            action_schemas=schemas,
+            perception=_empty_perception(),
+            budget=ExperimentBudget(max_ground_actions=4),
+        )
+    )
+
+    assert first.action.schema_id == "A"
+    assert second.action.schema_id == "B"
+
+
+
+def _direct_experiment(
+    experiment_id: str,
+    schema_id: str,
+    h1_success: float,
+    h2_success: float,
+) -> ContractExperiment:
+    return ContractExperiment(
+        experiment_id=experiment_id,
+        action=GroundAction(schema_id=schema_id, arguments=()),
+        predictions=(
+            ContractOutcomePrediction(
+                contract_id="h1",
+                experiment_id=experiment_id,
+                success_probability=h1_success,
+            ),
+            ContractOutcomePrediction(
+                contract_id="h2",
+                experiment_id=experiment_id,
+                success_probability=h2_success,
+            ),
+        ),
+    )
+
+
+def test_active_selection_falls_back_to_structural_novelty_when_eig_is_zero() -> None:
+    coordinator = ContractExperimentCoordinator()
+    posterior = TheoryPosterior(
+        (("h1", 0.5), ("h2", 0.5))
+    )
+    a = _direct_experiment("e-a", "A", 0.5, 0.5)
+    b = _direct_experiment("e-b", "B", 0.5, 0.5)
+
+    coordinator.record_outcome(a.action, success=False)
+    selected = coordinator.select_active(
+        posterior=posterior,
+        experiments=(a, b),
+    )
+
+    assert selected.action.schema_id == "B"
+
+
+def test_active_selection_keeps_positive_information_gain_above_novelty() -> None:
+    coordinator = ContractExperimentCoordinator()
+    posterior = TheoryPosterior(
+        (("h1", 0.5), ("h2", 0.5))
+    )
+    informative = _direct_experiment(
+        "e-informative",
+        "A",
+        0.95,
+        0.05,
+    )
+    novel = _direct_experiment(
+        "e-novel",
+        "B",
+        0.5,
+        0.5,
+    )
+    for _ in range(5):
+        coordinator.record_outcome(
+            informative.action,
+            success=False,
+        )
+
+    selected = coordinator.select_active(
+        posterior=posterior,
+        experiments=(informative, novel),
+    )
+
+    assert selected.action.schema_id == "A"

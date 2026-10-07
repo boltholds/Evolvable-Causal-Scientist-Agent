@@ -72,8 +72,8 @@ class AutonomousScientist:
             raise ValueError(
                 "no contract experiment can be grounded from the public surface"
             )
-        if not contracts:
-            return candidates[0]
+        if len(contracts) < 2:
+            return self.experiments.select_bootstrap(candidates)
 
         probability = 1.0 / len(contracts)
         posterior = TheoryPosterior(
@@ -82,7 +82,7 @@ class AutonomousScientist:
                 for contract in contracts
             )
         )
-        return self.experiments.select(
+        return self.experiments.select_active(
             posterior=posterior,
             experiments=candidates,
         )
@@ -95,6 +95,10 @@ class AutonomousScientist:
             raise TypeError(
                 "transition must be InteractionTransition"
             )
+        self.experiments.record_outcome(
+            transition.action,
+            success=transition.outcome.success,
+        )
         before = self.perception.perceive(transition.before)
         after = self.perception.perceive(transition.after)
         grounding = self._grounder.observe(
