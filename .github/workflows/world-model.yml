@@ -18,7 +18,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install
-        run: pip install -e '.[test,world-model-planning]'
+        run: pip install -e '.[test,mlmd,discoveryworld,world-model-planning]'
       - name: Test world model
         run: |
           python - <<'PY'
