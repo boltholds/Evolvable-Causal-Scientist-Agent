@@ -12,6 +12,7 @@ from ecsa.adapters.mlmd import MLMDMechanismRepository
 from ecsa.benchmarks.discoveryworld.policies import autonomous_scientist
 from ecsa.benchmarks.discoveryworld.policies.autonomous_scientist import (
     AutonomousScientistPolicy,
+    _transfer_views,
 )
 from ecsa.benchmarks.discoveryworld.arena import (
     _context_for_policy,
@@ -79,6 +80,7 @@ def test_autonomous_policy_has_no_scenario_spoilers() -> None:
     core_source = inspect.getsource(autonomy).lower()
     assert "benchmarks" not in core_source
     assert "discoveryworld" not in core_source
+    assert "MechanismRecord" not in core_source
 
 
 def test_autonomous_policy_selects_location_from_public_goal_words() -> None:
@@ -161,24 +163,41 @@ def test_transfer_candidate_is_structural_prior_not_feature_answer() -> None:
         version=1,
         kind=MechanismKind.SYMBOLIC_RULE,
         epistemic_status=EpistemicStatus.ADMITTED,
-        representation_artifact="artifact",
+        representation_artifact="benchmark-private-artifact",
         scope=MechanismScope(
             context_ids=("old",),
             regime_ids=("normal",),
             domain_ids=("world",),
             task_ids=("task",),
-            required_assumptions=("public",),
+            required_assumptions=(
+                "public-observation-only",
+                "generic-scalar-discovery",
+            ),
         ),
         transfer_status=TransferStatus.CONTEXT_SPECIALIZED,
         parameters=(
             ("transfer_key", "scalar-interaction-to-control"),
             ("generic_degree", 1),
             ("generic_feature_key", "old-feature"),
+            ("benchmark_private_parameter", 999.0),
         ),
     )
-    scientist = autonomy.AutonomousScientist()
-    assert scientist._transfer_source((source,)) == source
+    context = ScientificContext(
+        "new",
+        (),
+        (source,),
+        (),
+        generic_evidence=(),
+    )
 
+    [view] = _transfer_views(context)
+    scientist = autonomy.AutonomousScientist()
+
+    assert view.ref == source.ref
+    assert view.transfer_key == "scalar-interaction-to-control"
+    assert view.preferred_degree == 1
+    assert not hasattr(view, "parameters")
+    assert scientist._transfer_source((view,)) == view
 
 
 def test_autonomous_policy_does_not_assert_function_family() -> None:
