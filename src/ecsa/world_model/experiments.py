@@ -259,6 +259,61 @@ class ContractExperimentCoordinator:
         return tuple(experiments)
         return tuple(experiments)
 
+    def select_active(
+        self,
+        *,
+        posterior: TheoryPosterior,
+        experiments: tuple[ContractExperiment, ...],
+        min_information_gain_bits: float = 1e-12,
+    ) -> ContractExperiment:
+        if not experiments:
+            raise ValueError("at least one contract experiment is required")
+        if (
+            not isinstance(min_information_gain_bits, (int, float))
+            or isinstance(min_information_gain_bits, bool)
+            or float(min_information_gain_bits) < 0.0
+        ):
+            raise ValueError(
+                "min_information_gain_bits must be nonnegative"
+            )
+        if any(not experiment.predictions for experiment in experiments):
+            raise ValueError(
+                "contract experiments require predictions for active selection"
+            )
+
+        scored = tuple(
+            (
+                self.science.score_experiment(
+                    posterior,
+                    tuple(
+                        prediction.as_predictive_distribution()
+                        for prediction in experiment.predictions
+                    ),
+                ),
+                experiment,
+            )
+            for experiment in experiments
+        )
+        best_score, best_experiment = min(
+            scored,
+            key=lambda item: (
+                -item[0].information_gain_bits,
+                -self.history.bootstrap_score(
+                    item[1].action,
+                )[0],
+                -self.history.bootstrap_score(
+                    item[1].action,
+                )[1],
+                item[1].experiment_id,
+            ),
+        )
+        if (
+            best_score.information_gain_bits
+            <= float(min_information_gain_bits)
+        ):
+            return self.select_bootstrap(experiments)
+        return best_experiment
+
     def select(
         self,
         *,
