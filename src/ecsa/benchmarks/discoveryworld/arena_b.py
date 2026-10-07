@@ -17,6 +17,7 @@ from ecsa.world_model.experiments import (
 from ecsa.world_model.kernel import (
     WorldModelAcquisitionKernel,
 )
+from ecsa.world_model.learners.locm2 import Locm2Learner
 from ecsa.world_model.perception.structured import (
     StructuredObservationFrontend,
 )
@@ -83,7 +84,9 @@ def run_autonomous_episode(
         seed,
         max_steps=max_steps,
     )
-    world_model = WorldModelAcquisitionKernel()
+    world_model = WorldModelAcquisitionKernel(
+        learners=(Locm2Learner(),),
+    )
     perception = StructuredObservationFrontend(
         DiscoveryWorldStructuredDecoder()
     )
