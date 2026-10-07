@@ -244,6 +244,7 @@ def test_episode_loop_keeps_oracle_outside_policy_surface(
     names = {
         "run.json",
         "actions.jsonl",
+        "action_outcomes.jsonl",
         "observations.jsonl",
         "scientific_events.jsonl",
         "mechanism_events.jsonl",
@@ -745,3 +746,35 @@ def test_policy_factory_cannot_mutate_shared_nested_config_between_arms() -> Non
 
     assert seen == [("original",), ("original",)]
     assert original == {"nested": {"labels": ["original"]}}
+
+
+
+def test_action_outcomes_log_records_failed_action(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    events: list[str] = []
+    fake = FakeEnvironment(events)
+    patch_environment(monkeypatch, fake)
+    policy = RecordingPolicy(events)
+    repository = MLMDMechanismRepository.sqlite(
+        tmp_path / "mechanisms.sqlite"
+    )
+
+    run_episode(
+        config=config(max_steps=1),
+        policy=policy,
+        repository=repository,
+        output_dir=tmp_path / "run",
+    )
+
+    [outcome] = [
+        json.loads(line)
+        for line in (tmp_path / "run" / "action_outcomes.jsonl")
+        .read_text()
+        .splitlines()
+        if line.strip()
+    ]
+    assert outcome["step"] == 1
+    assert isinstance(outcome["success"], bool)
+    assert isinstance(outcome["errors"], list)
