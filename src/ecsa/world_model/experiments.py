@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from hashlib import sha256
-from itertools import product
 from math import isfinite
 
 from ecsa.contracts import (
@@ -11,11 +10,14 @@ from ecsa.contracts import (
 )
 from ecsa.science import ScienceKernel
 
+from .candidate_generation import (
+    ExperimentHistory,
+    StructuralCandidateGenerator,
+)
 from .contracts import (
     FrozenRawValue,
     GroundAction,
     RawActionSchema,
-    freeze_raw_value,
 )
 from .hypotheses import WorldContractHypothesis
 from .perception.base import PerceptualObservation
@@ -83,20 +85,6 @@ class ContractExperiment:
             for value in self.predictions
         ):
             raise ValueError("predictions must be immutable typed values")
-
-
-def _entity_argument_candidates(
-    perception: PerceptualObservation,
-) -> tuple[FrozenRawValue, ...]:
-    return tuple(
-        freeze_raw_value(
-            entity.source_identity or entity.local_ref
-        )
-        for entity in sorted(
-            perception.entities,
-            key=lambda value: value.local_ref,
-        )
-    )
 
 
 def _experiment_id(action: GroundAction) -> str:
@@ -182,8 +170,42 @@ class ContractExperimentCoordinator:
         self,
         *,
         science: ScienceKernel | None = None,
+        history: ExperimentHistory | None = None,
+        candidates: StructuralCandidateGenerator | None = None,
     ) -> None:
         self.science = science or ScienceKernel()
+        self.history = history or ExperimentHistory()
+        self.candidates = candidates or StructuralCandidateGenerator(
+            history=self.history,
+        )
+
+    def record_outcome(
+        self,
+        action: GroundAction,
+        *,
+        success: bool,
+    ) -> None:
+        self.history.record(action, success=success)
+
+    def select_bootstrap(
+        self,
+        experiments: tuple[ContractExperiment, ...],
+    ) -> ContractExperiment:
+        if not experiments:
+            raise ValueError("at least one contract experiment is required")
+        return min(
+            experiments,
+            key=lambda experiment: (
+                -self.history.bootstrap_score(
+                    experiment.action,
+                )[0],
+                -self.history.bootstrap_score(
+                    experiment.action,
+                )[1],
+                experiment.action.schema_id,
+                experiment.experiment_id,
+            ),
+        )
 
     def propose(
         self,
@@ -208,59 +230,33 @@ class ContractExperimentCoordinator:
         if not isinstance(budget, ExperimentBudget):
             raise TypeError("budget must be ExperimentBudget")
 
-        entity_candidates = _entity_argument_candidates(perception)
+        ground_actions = self.candidates.propose(
+            action_schemas=action_schemas,
+            perception=perception,
+            max_ground_actions=budget.max_ground_actions,
+        )
         experiments: list[ContractExperiment] = []
-        for schema in sorted(
-            action_schemas,
-            key=lambda value: value.schema_id,
-        ):
-            candidate_sets: list[tuple[FrozenRawValue, ...]] = []
-            viable = True
-            for parameter in schema.parameters:
-                values = (
-                    parameter.public_candidates
-                    if parameter.public_candidates
-                    else entity_candidates
+        for action in ground_actions:
+            experiment_id = _experiment_id(action)
+            predictions = tuple(
+                ContractOutcomePrediction(
+                    contract_id=contract.contract_id,
+                    experiment_id=experiment_id,
+                    success_probability=_success_probability(
+                        contract,
+                        action,
+                    ),
                 )
-                if not values:
-                    viable = False
-                    break
-                candidate_sets.append(values)
-            if not viable:
-                continue
-
-            combinations = (
-                product(*candidate_sets)
-                if candidate_sets
-                else ((),)
+                for contract in contracts
             )
-            for combination in combinations:
-                action = GroundAction(
-                    schema_id=schema.schema_id,
-                    arguments=tuple(combination),
+            experiments.append(
+                ContractExperiment(
+                    experiment_id=experiment_id,
+                    action=action,
+                    predictions=predictions,
                 )
-                action.validate_against(schema)
-                experiment_id = _experiment_id(action)
-                predictions = tuple(
-                    ContractOutcomePrediction(
-                        contract_id=contract.contract_id,
-                        experiment_id=experiment_id,
-                        success_probability=_success_probability(
-                            contract,
-                            action,
-                        ),
-                    )
-                    for contract in contracts
-                )
-                experiments.append(
-                    ContractExperiment(
-                        experiment_id=experiment_id,
-                        action=action,
-                        predictions=predictions,
-                    )
-                )
-                if len(experiments) >= budget.max_ground_actions:
-                    return tuple(experiments)
+            )
+        return tuple(experiments)
         return tuple(experiments)
 
     def select(
