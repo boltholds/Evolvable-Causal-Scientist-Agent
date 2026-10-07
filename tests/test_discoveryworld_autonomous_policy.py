@@ -335,7 +335,11 @@ def test_real_autonomous_seed0_reaches_generic_hypothesis(
             scientist._historical_preferred
         ),
         "pair_trials": scientist._pair_trials,
-        "pair_type_counts": scientist._pair_type_counts,
+        "pair_type_counts": {
+            f"{left} -> {right}": count
+            for (left, right), count
+            in sorted(scientist._pair_type_counts.items())
+        },
         "last_actions": actions[-20:],
     }
 
