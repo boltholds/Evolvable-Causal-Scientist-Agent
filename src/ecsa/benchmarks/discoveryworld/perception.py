@@ -106,6 +106,7 @@ class DiscoveryWorldStructuredDecoder:
                     local_ref=f"dw:{entity_id}",
                     source_identity=str(entity_id),
                     features=tuple(features),
+                    interaction_ref=freeze_raw_value(entity_id),
                 )
             )
         return tuple(result)
