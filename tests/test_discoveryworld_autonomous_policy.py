@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import inspect
@@ -252,3 +253,78 @@ def test_real_autonomous_policy_executes_public_loop(
     assert 1 <= result.evaluation.steps <= 5
     assert (tmp_path / "run" / "actions.jsonl").exists()
     assert (tmp_path / "run" / "observations.jsonl").exists()
+
+
+
+def test_real_autonomous_seed0_reaches_generic_hypothesis(
+    tmp_path: Path,
+) -> None:
+    policy = AutonomousScientistPolicy(
+        {
+            "max_polynomial_degree": 2,
+            "max_pair_trials": 96,
+            "control_tolerance": 1.5,
+        }
+    )
+    repository = MLMDMechanismRepository.sqlite(
+        tmp_path / "mechanisms.sqlite"
+    )
+    run_dir = tmp_path / "autonomous-discovery"
+
+    result = run_episode(
+        config=DiscoveryWorldEpisodeConfig(
+            scenario="Reactor Lab",
+            difficulty="Normal",
+            seed=0,
+            max_steps=250,
+        ),
+        policy=policy,
+        repository=repository,
+        output_dir=run_dir,
+    )
+
+    events = [
+        json.loads(line)
+        for line in (run_dir / "scientific_events.jsonl")
+        .read_text()
+        .splitlines()
+        if line.strip()
+    ]
+    actions = [
+        json.loads(line)
+        for line in (run_dir / "actions.jsonl")
+        .read_text()
+        .splitlines()
+        if line.strip()
+    ]
+
+    generic_evidence = [
+        event
+        for event in events
+        if event.get("kind") == "generic_scalar_evidence"
+    ]
+    generic_hypotheses = [
+        event
+        for event in events
+        if event.get("kind") == "generic_hypothesis_frozen"
+    ]
+
+    diagnostic = {
+        "steps": result.evaluation.steps,
+        "generic_evidence_count": len(generic_evidence),
+        "event_kinds": sorted(
+            {
+                event.get("kind")
+                for event in events
+                if isinstance(event.get("kind"), str)
+            }
+        ),
+        "last_actions": actions[-20:],
+    }
+
+    assert generic_evidence, diagnostic
+    assert any(
+        len(event["evidence"]["entity_ids"]) >= 2
+        for event in generic_evidence
+    ), diagnostic
+    assert generic_hypotheses, diagnostic
