@@ -93,6 +93,111 @@ class DiscoveryWorldEvaluation:
 
 
 
+@dataclass(frozen=True)
+class GenericScalarEvidence:
+    evidence_id: str
+    step: int
+    action_name: str
+    entity_ids: tuple[int, ...]
+    feature_key: str
+    value: float
+    raw_text: str
+
+    def __post_init__(self) -> None:
+        if not self.evidence_id or not self.action_name or not self.feature_key:
+            raise ValueError("generic evidence ids/action/feature are required")
+        if type(self.step) is not int or self.step < 0:
+            raise ValueError("generic evidence step must be nonnegative")
+        if not isinstance(self.entity_ids, tuple) or not all(
+            type(value) is int and value >= 0
+            for value in self.entity_ids
+        ):
+            raise ValueError("generic evidence entity ids must be nonnegative integers")
+        if not isfinite(self.value):
+            raise ValueError("generic evidence value must be finite")
+        if not self.raw_text:
+            raise ValueError("generic evidence raw_text is required")
+
+
+@dataclass(frozen=True)
+class GenericNumericPrediction:
+    subject_entity_id: int
+    control_entity_id: int
+    predicted_value: float
+    frozen_step: int
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.subject_entity_id) is not int
+            or self.subject_entity_id < 0
+            or type(self.control_entity_id) is not int
+            or self.control_entity_id < 0
+        ):
+            raise ValueError("generic prediction entity ids must be nonnegative")
+        if not isfinite(self.predicted_value):
+            raise ValueError("generic predicted value must be finite")
+        if type(self.frozen_step) is not int or self.frozen_step < 0:
+            raise ValueError("generic frozen_step must be nonnegative")
+
+
+@dataclass(frozen=True)
+class GenericNumericHypothesis:
+    hypothesis_id: str
+    transfer_key: str
+    feature_key: str
+    control_feature_key: str
+    polynomial_degree: int
+    coefficients: tuple[float, ...]
+    source_evidence_ids: tuple[str, ...]
+    predictions: tuple[GenericNumericPrediction, ...]
+    source_mechanism: MechanismVersionRef | None = None
+
+    def __post_init__(self) -> None:
+        if (
+            not self.hypothesis_id
+            or not self.transfer_key
+            or not self.feature_key
+            or not self.control_feature_key
+        ):
+            raise ValueError("generic hypothesis identifiers are required")
+        if (
+            type(self.polynomial_degree) is not int
+            or self.polynomial_degree < 0
+            or self.polynomial_degree > 4
+        ):
+            raise ValueError("generic polynomial_degree must be in 0..4")
+        if (
+            not isinstance(self.coefficients, tuple)
+            or len(self.coefficients) != self.polynomial_degree + 1
+            or not all(isfinite(value) for value in self.coefficients)
+        ):
+            raise ValueError("generic coefficients must match polynomial degree")
+        if (
+            not isinstance(self.source_evidence_ids, tuple)
+            or not self.source_evidence_ids
+            or not all(
+                isinstance(value, str) and value
+                for value in self.source_evidence_ids
+            )
+            or len(set(self.source_evidence_ids))
+            != len(self.source_evidence_ids)
+        ):
+            raise ValueError("generic source evidence ids must be unique strings")
+        if (
+            not isinstance(self.predictions, tuple)
+            or not self.predictions
+            or not all(
+                isinstance(value, GenericNumericPrediction)
+                for value in self.predictions
+            )
+        ):
+            raise ValueError("generic hypothesis requires typed predictions")
+        if self.source_mechanism is not None and not isinstance(
+            self.source_mechanism, MechanismVersionRef
+        ):
+            raise ValueError("generic source_mechanism must be a MechanismVersionRef")
+
+
 class MeasurementKind(StrEnum):
     DENSITY = "density"
     TEMPERATURE = "temperature"
@@ -226,6 +331,7 @@ class ScientificContext:
     measurements: tuple[ReactorMeasurement, ...]
     transfer_candidates: tuple[MechanismRecord, ...]
     admitted_mechanisms: tuple[MechanismRecord, ...]
+    generic_evidence: tuple[GenericScalarEvidence, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -235,6 +341,8 @@ class PolicyDecision:
     memory: str | None = None
     hypotheses: tuple[ReactorMechanismHypothesis, ...] = ()
     validation_hypothesis_ids: tuple[str, ...] = ()
+    generic_hypotheses: tuple[GenericNumericHypothesis, ...] = ()
+    generic_validation_hypothesis_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         validate_action_packet(self.action)
@@ -251,6 +359,26 @@ class PolicyDecision:
         ):
             raise ValueError(
                 "validation_hypothesis_ids must be unique immutable strings"
+            )
+        if (
+            not isinstance(self.generic_hypotheses, tuple)
+            or not all(
+                isinstance(value, GenericNumericHypothesis)
+                for value in self.generic_hypotheses
+            )
+        ):
+            raise ValueError("generic_hypotheses must be immutable typed values")
+        if (
+            not isinstance(self.generic_validation_hypothesis_ids, tuple)
+            or not all(
+                isinstance(value, str) and value
+                for value in self.generic_validation_hypothesis_ids
+            )
+            or len(set(self.generic_validation_hypothesis_ids))
+            != len(self.generic_validation_hypothesis_ids)
+        ):
+            raise ValueError(
+                "generic_validation_hypothesis_ids must be unique immutable strings"
             )
 
 
