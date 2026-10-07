@@ -1340,12 +1340,9 @@ class AutonomousScientist:
     @staticmethod
     def _transfer_source(
         transfer_candidates: tuple[TransferMechanismView, ...],
-    ) -> MechanismRecord | None:
+    ) -> TransferMechanismView | None:
         for mechanism in transfer_candidates:
-            if (
-                _parameter_map(mechanism).get("transfer_key")
-                == TRANSFER_KEY
-            ):
+            if mechanism.transfer_key == TRANSFER_KEY:
                 return mechanism
         return None
 
