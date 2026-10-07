@@ -8,6 +8,7 @@ from ecsa.autonomy import (
     AutonomousWorldView,
     DialogOption,
     PublicEntityView,
+    TransferMechanismView,
 )
 
 from ..contracts import (
@@ -142,6 +143,31 @@ def _dialog(
     return in_dialog, tuple(sorted(parsed, key=lambda item: item.option_id))
 
 
+def _transfer_views(
+    scientific_context: ScientificContext,
+) -> tuple[TransferMechanismView, ...]:
+    views: list[TransferMechanismView] = []
+    for mechanism in scientific_context.transfer_candidates:
+        parameters = dict(mechanism.parameters)
+        transfer_key = parameters.get("transfer_key")
+        if not isinstance(transfer_key, str) or not transfer_key:
+            continue
+        raw_degree = parameters.get("generic_degree")
+        preferred_degree = (
+            raw_degree
+            if type(raw_degree) is int and 0 <= raw_degree <= 4
+            else None
+        )
+        views.append(
+            TransferMechanismView(
+                ref=mechanism.ref,
+                transfer_key=transfer_key,
+                preferred_degree=preferred_degree,
+            )
+        )
+    return tuple(views)
+
+
 class AutonomousScientistPolicy:
     scientific_assumptions = GENERIC_DISCOVERY_ASSUMPTIONS
 
@@ -184,7 +210,7 @@ class AutonomousScientistPolicy:
         decision = self._scientist.decide(
             view,
             scientific_context.generic_evidence,
-            scientific_context.transfer_candidates,
+            _transfer_views(scientific_context),
         )
 
         if decision.dialog_option is not None:
