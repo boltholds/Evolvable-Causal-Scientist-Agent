@@ -4,6 +4,7 @@ from ecsa.benchmarks.discoveryworld.contracts import (
     GenericScalarEvidence,
     ScientificContext,
 )
+import ecsa.autonomy as autonomy
 from ecsa.benchmarks.discoveryworld.policies import autonomous_scientist
 from ecsa.benchmarks.discoveryworld.policies.autonomous_scientist import (
     AutonomousScientistPolicy,
@@ -51,7 +52,10 @@ def _evidence(
 
 
 def test_autonomous_policy_has_no_scenario_spoilers() -> None:
-    source = inspect.getsource(autonomous_scientist).lower()
+    source = (
+        inspect.getsource(autonomous_scientist)
+        + inspect.getsource(autonomy)
+    ).lower()
     forbidden = (
         "reactor",
         "crystal",
