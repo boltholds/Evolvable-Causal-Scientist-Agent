@@ -134,12 +134,10 @@ def _dialog(
                 continue
             if isinstance(raw_label, str) and raw_label:
                 parsed.append(DialogOption(option_id, raw_label))
-    flag = box.get("is_in_dialog")
-    in_dialog = bool(
-        flag
-        if type(flag) is bool
-        else parsed
-    )
+    # DiscoveryWorld can expose the terminal dialog frame for one
+    # observation after the dialog tree has already exhausted its options.
+    # The actionable public contract is therefore the option set itself.
+    in_dialog = bool(parsed)
     return in_dialog, tuple(sorted(parsed, key=lambda item: item.option_id))
 
 

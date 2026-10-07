@@ -328,3 +328,29 @@ def test_real_autonomous_seed0_reaches_generic_hypothesis(
         for event in generic_evidence
     ), diagnostic
     assert generic_hypotheses, diagnostic
+
+
+
+def test_empty_terminal_dialog_is_not_actionable() -> None:
+    observation = _observation([])
+    observation["ui"]["dialog_box"] = {
+        "dialogIn": "Done.",
+        "dialogOptions": {},
+        "is_in_dialog": True,
+    }
+
+    decision = AutonomousScientistPolicy({}).decide(
+        observation,
+        {
+            "DISCOVERY_FEED_GET_UPDATES": {
+                "args": [],
+                "desc": "observe",
+            }
+        },
+        {},
+        ScientificContext("ctx", (), (), ()),
+    )
+
+    assert decision.action == {
+        "action": "DISCOVERY_FEED_GET_UPDATES"
+    }
