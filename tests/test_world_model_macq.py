@@ -1,5 +1,7 @@
 import importlib.util
 
+import pytest
+
 from ecsa.world_model.learners.base import (
     AcquisitionActionStep,
     AcquisitionTrace,
@@ -38,7 +40,7 @@ def test_missing_macq_returns_typed_learner_failure(monkeypatch) -> None:
 
 
 def test_macq_locm_proposal_contains_no_macq_types() -> None:
-    assert importlib.util.find_spec("macq") is not None
+    pytest.importorskip("macq")
 
     result = MacqLocmLearner().update((_locm_trace(),), ())
 
@@ -54,7 +56,7 @@ def test_macq_locm_proposal_contains_no_macq_types() -> None:
 
 
 def test_incompatible_partial_trace_returns_typed_failure_not_kernel_exception() -> None:
-    assert importlib.util.find_spec("macq") is not None
+    pytest.importorskip("macq")
     trace = AcquisitionTrace(
         trace_id="too-short",
         steps=(
