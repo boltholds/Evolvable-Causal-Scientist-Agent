@@ -71,6 +71,24 @@ class DiscoveryWorldRawEnvironment:
     _environment: DiscoveryWorldEnvironmentAdapter
 
     @classmethod
+    def load(
+        cls,
+        *,
+        scenario: str,
+        difficulty: str,
+        seed: int,
+        max_steps: int = 1000,
+    ) -> "DiscoveryWorldRawEnvironment":
+        return cls(
+            DiscoveryWorldEnvironmentAdapter.load(
+                scenario=scenario,
+                difficulty=difficulty,
+                seed=seed,
+                max_steps=max_steps,
+            )
+        )
+
+    @classmethod
     def reactor_lab_normal(
         cls,
         seed: int,
