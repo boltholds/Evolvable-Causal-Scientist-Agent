@@ -167,3 +167,16 @@ def test_transfer_candidate_is_structural_prior_not_feature_answer() -> None:
     )
     scientist = autonomy.AutonomousScientist()
     assert scientist._transfer_source((source,)) == source
+
+
+
+def test_autonomous_policy_does_not_assert_function_family() -> None:
+    policy = AutonomousScientistPolicy({})
+    assert policy.scientific_assumptions == (
+        "public-observation-only",
+        "generic-scalar-discovery",
+    )
+    assert all(
+        "linear" not in assumption
+        for assumption in policy.scientific_assumptions
+    )
