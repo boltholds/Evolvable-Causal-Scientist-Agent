@@ -408,6 +408,10 @@ class AutonomousScientist:
         self._labels: dict[int, str] = {}
         self._descriptions: dict[int, str] = {}
         self._attempted: set[tuple] = set()
+        self._unary_type_counts: dict[
+            tuple[str, str],
+            int,
+        ] = {}
         self._visited_location_contexts: set[
             tuple[str, tuple[int, ...]]
         ] = set()
@@ -566,11 +570,36 @@ class AutonomousScientist:
 
         for role in role_order:
             for action in self._by_role(view, role, arity=1):
-                for entity in ranked:
+                unary_candidates = sorted(
+                    ranked,
+                    key=lambda entity: (
+                        self._unary_type_counts.get(
+                            (
+                                action.action_id,
+                                _base_name(entity.name),
+                            ),
+                            0,
+                        ),
+                        -self._relevance(view, entity),
+                        entity.entity_id,
+                    ),
+                )
+                for entity in unary_candidates:
                     signature = (action.action_id, entity.entity_id)
                     if signature in self._attempted:
                         continue
                     self._attempted.add(signature)
+                    unary_type = (
+                        action.action_id,
+                        _base_name(entity.name),
+                    )
+                    self._unary_type_counts[unary_type] = (
+                        self._unary_type_counts.get(
+                            unary_type,
+                            0,
+                        )
+                        + 1
+                    )
                     if role is ActionRole.OBSERVE_UNARY:
                         self._dialog_entity = entity.entity_id
                     return self._decision(
