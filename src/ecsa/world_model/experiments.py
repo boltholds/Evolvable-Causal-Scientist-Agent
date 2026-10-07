@@ -89,14 +89,40 @@ def _entity_argument_candidates(
     perception: PerceptualObservation,
 ) -> tuple[FrozenRawValue, ...]:
     return tuple(
-        freeze_raw_value(
-            entity.source_identity or entity.local_ref
+        (
+            entity.interaction_ref
+            if entity.interaction_ref is not None
+            else freeze_raw_value(
+                entity.source_identity or entity.local_ref
+            )
         )
         for entity in sorted(
             perception.entities,
             key=lambda value: value.local_ref,
         )
     )
+
+
+def _merge_candidate_sources(
+    *sources: tuple[FrozenRawValue, ...],
+) -> tuple[FrozenRawValue, ...]:
+    result: list[FrozenRawValue] = []
+    seen: set[FrozenRawValue] = set()
+    index = 0
+    while True:
+        added = False
+        for source in sources:
+            if index >= len(source):
+                continue
+            value = source[index]
+            if value not in seen:
+                seen.add(value)
+                result.append(value)
+            added = True
+        if not added:
+            break
+        index += 1
+    return tuple(result)
 
 
 def _experiment_id(action: GroundAction) -> str:
@@ -222,10 +248,9 @@ class ContractExperimentCoordinator:
             candidate_sets: list[tuple[FrozenRawValue, ...]] = []
             viable = True
             for parameter in schema.parameters:
-                values = (
-                    parameter.public_candidates
-                    if parameter.public_candidates
-                    else entity_candidates
+                values = _merge_candidate_sources(
+                    entity_candidates,
+                    parameter.public_candidates,
                 )
                 if not values:
                     viable = False
