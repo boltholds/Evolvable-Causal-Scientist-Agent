@@ -468,3 +468,41 @@ def test_local_binary_budget_forces_exploration() -> None:
         "action": "TELEPORT_TO_OBJECT",
         "arg1": 3,
     }
+
+
+
+def test_location_becomes_novel_again_after_inventory_change() -> None:
+    scientist = autonomy.AutonomousScientist()
+    empty_view = autonomy.AutonomousWorldView(
+        goal_text="Investigate system",
+        entities=(),
+        actions=(),
+        locations=("lab-a", "lab-b"),
+        in_dialog=False,
+        dialog_options=(),
+    )
+    carrying_view = autonomy.AutonomousWorldView(
+        goal_text="Investigate system",
+        entities=(
+            autonomy.PublicEntityView(
+                entity_id=1,
+                name="sample 1",
+                description="sample",
+                accessible=True,
+                inventory=True,
+            ),
+        ),
+        actions=(),
+        locations=("lab-a", "lab-b"),
+        in_dialog=False,
+        dialog_options=(),
+    )
+
+    scientist._mark_location_visited(empty_view, "lab-a")
+    scientist._mark_location_visited(empty_view, "lab-b")
+
+    assert scientist._next_location(empty_view) is None
+    assert scientist._next_location(carrying_view) in {
+        "lab-a",
+        "lab-b",
+    }
