@@ -1,4 +1,5 @@
 import inspect
+import json
 from pathlib import Path
 
 from ecsa.benchmarks.discoveryworld.arena_b import (
