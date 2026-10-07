@@ -1,0 +1,40 @@
+name: native-world-model-fast
+
+on:
+  push:
+    branches: [feat/world-model-acquisition-verify]
+
+concurrency:
+  group: native-world-model-fast-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  no-optional-macq:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install -e '.[test,mlmd,discoveryworld]'
+      - name: Test legacy migration and optional backend boundary
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+        run: |
+          pytest -q \
+            tests/test_discoveryworld_autonomous_policy.py \
+            tests/test_world_model_macq.py
+
+  with-macq:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install -e '.[test,world-model-planning]'
+      - name: Test real MAcq backend
+        run: pytest -q tests/test_world_model_macq.py
