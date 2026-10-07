@@ -4,6 +4,7 @@ import argparse
 import importlib
 import json
 import subprocess
+from copy import deepcopy
 from datetime import datetime, timezone
 from hashlib import sha256
 from pathlib import Path
@@ -109,6 +110,9 @@ def run_episode(
         )
 
         transfer_candidates = repository.find_transfer_candidates(context)
+        transfer_candidate_refs = {
+            candidate.ref for candidate in transfer_candidates
+        }
         for candidate in transfer_candidates:
             run_metrics.record_candidate_retrieved(
                 f"{candidate.mechanism_id}@{candidate.version}"
@@ -129,6 +133,13 @@ def run_episode(
             raise TypeError("policy must return PolicyDecision")
 
         for hypothesis in decision.hypotheses:
+            if (
+                hypothesis.source_mechanism is not None
+                and hypothesis.source_mechanism not in transfer_candidate_refs
+            ):
+                raise ValueError(
+                    "hypothesis source_mechanism must be a current transfer candidate"
+                )
             previous = frozen.get(hypothesis.hypothesis_id)
             if previous is None:
                 sidecar.freeze_hypothesis(hypothesis)
@@ -430,7 +441,7 @@ def _create_policy(
     factory: Callable[[dict], DiscoveryWorldActionPolicy],
     config: dict,
 ) -> DiscoveryWorldActionPolicy:
-    policy = factory(dict(config))
+    policy = factory(deepcopy(config))
     if not isinstance(policy, DiscoveryWorldActionPolicy):
         raise TypeError("policy factory must return DiscoveryWorldActionPolicy")
     return policy
