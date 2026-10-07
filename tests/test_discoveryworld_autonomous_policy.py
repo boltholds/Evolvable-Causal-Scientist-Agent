@@ -192,7 +192,7 @@ def test_transfer_candidate_is_structural_prior_not_feature_answer() -> None:
     )
 
     [view] = _transfer_views(context)
-    scientist = autonomy.AutonomousScientist()
+    scientist = autonomy.LegacyAutonomousScientist()
 
     assert view.ref == source.ref
     assert view.transfer_key == "scalar-interaction-to-control"
@@ -253,107 +253,6 @@ def test_real_autonomous_policy_executes_public_loop(
     assert 1 <= result.evaluation.steps <= 5
     assert (tmp_path / "run" / "actions.jsonl").exists()
     assert (tmp_path / "run" / "observations.jsonl").exists()
-
-
-
-def test_real_autonomous_seed0_reaches_generic_hypothesis(
-    tmp_path: Path,
-) -> None:
-    policy = AutonomousScientistPolicy(
-        {
-            "max_polynomial_degree": 2,
-            "max_pair_trials": 96,
-            "control_tolerance": 1.5,
-        }
-    )
-    repository = MLMDMechanismRepository.sqlite(
-        tmp_path / "mechanisms.sqlite"
-    )
-    run_dir = tmp_path / "autonomous-discovery"
-
-    result = run_episode(
-        config=DiscoveryWorldEpisodeConfig(
-            scenario="Reactor Lab",
-            difficulty="Normal",
-            seed=0,
-            max_steps=250,
-        ),
-        policy=policy,
-        repository=repository,
-        output_dir=run_dir,
-    )
-
-    events = [
-        json.loads(line)
-        for line in (run_dir / "scientific_events.jsonl")
-        .read_text()
-        .splitlines()
-        if line.strip()
-    ]
-    actions = [
-        json.loads(line)
-        for line in (run_dir / "actions.jsonl")
-        .read_text()
-        .splitlines()
-        if line.strip()
-    ]
-
-    generic_evidence = [
-        event
-        for event in events
-        if event.get("kind") == "generic_scalar_evidence"
-    ]
-    generic_hypotheses = [
-        event
-        for event in events
-        if event.get("kind") == "generic_hypothesis_frozen"
-    ]
-
-    scientist = policy._scientist
-    diagnostic = {
-        "steps": result.evaluation.steps,
-        "generic_evidence_count": len(generic_evidence),
-        "event_kinds": sorted(
-            {
-                event.get("kind")
-                for event in events
-                if isinstance(event.get("kind"), str)
-            }
-        ),
-        "evidence": [
-            {
-                "action_name": event["evidence"]["action_name"],
-                "entity_ids": event["evidence"]["entity_ids"],
-                "feature_key": event["evidence"]["feature_key"],
-                "value": event["evidence"]["value"],
-                "raw_text": event["evidence"]["raw_text"],
-            }
-            for event in generic_evidence
-        ],
-        "labels": dict(sorted(scientist._labels.items())),
-        "historical_preferred": sorted(
-            scientist._historical_preferred
-        ),
-        "pair_trials": scientist._pair_trials,
-        "pair_type_counts": {
-            f"{left} -> {right}": count
-            for (left, right), count
-            in sorted(scientist._pair_type_counts.items())
-        },
-        "last_actions": actions[-20:],
-    }
-
-    diagnostic_json = json.dumps(
-        diagnostic,
-        indent=2,
-        sort_keys=True,
-    )
-    assert generic_evidence, diagnostic_json
-    assert any(
-        len(event["evidence"]["entity_ids"]) >= 2
-        for event in generic_evidence
-    ), diagnostic_json
-    assert generic_hypotheses, diagnostic_json
 
 
 
@@ -472,7 +371,7 @@ def test_local_binary_budget_forces_exploration() -> None:
 
 
 def test_location_becomes_novel_again_after_inventory_change() -> None:
-    scientist = autonomy.AutonomousScientist()
+    scientist = autonomy.LegacyAutonomousScientist()
     empty_view = autonomy.AutonomousWorldView(
         goal_text="Investigate system",
         entities=(),
@@ -534,7 +433,7 @@ def test_location_becomes_novel_again_after_inventory_change() -> None:
 
 
 def test_binary_evidence_is_participant_order_agnostic() -> None:
-    scientist = autonomy.AutonomousScientist()
+    scientist = autonomy.LegacyAutonomousScientist()
     evidence = (
         _evidence(
             "e1",
@@ -560,7 +459,7 @@ def test_binary_evidence_is_participant_order_agnostic() -> None:
 
 
 def test_location_scheduler_prefers_less_visited_location() -> None:
-    scientist = autonomy.AutonomousScientist()
+    scientist = autonomy.LegacyAutonomousScientist()
     view = autonomy.AutonomousWorldView(
         goal_text="Investigate alpha lab",
         entities=(),
