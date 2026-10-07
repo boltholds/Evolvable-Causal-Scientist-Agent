@@ -66,11 +66,11 @@ def test_acquisition_trace_rejects_empty_steps() -> None:
         AcquisitionTrace(trace_id="empty", steps=())
 
 
-def test_action_step_rejects_duplicate_object_refs() -> None:
+def test_action_step_requires_nonempty_object_refs() -> None:
     with pytest.raises(ValueError, match="object"):
         AcquisitionActionStep(
             schema_id="A17",
-            object_refs=("o1", "o1"),
+            object_refs=("",),
             evidence_id="e1",
         )
 
