@@ -672,3 +672,73 @@ def test_progressive_transfer_refuses_existing_repository_state(
             max_steps=1,
             episode_runner=lambda **kwargs: None,
         )
+
+
+
+def test_episode_rejects_source_mechanism_that_is_not_current_transfer_candidate(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    events: list[str] = []
+    fake = FakeEnvironment(events, activate_after_action=True)
+    patch_environment(monkeypatch, fake)
+    repository = MLMDMechanismRepository.sqlite(
+        tmp_path / "mechanisms.sqlite"
+    )
+    source = MechanismRecord(
+        mechanism_id="unrelated-law",
+        version=1,
+        kind=MechanismKind.SYMBOLIC_RULE,
+        status=EpistemicStatus.ADMITTED,
+        representation_artifact_id="reactor-rule:sha256:" + "e" * 64,
+        scope=MechanismScope(
+            context_ids=(reactor_context(0).context_id,),
+            regime_ids=("normal",),
+            domain_ids=("discoveryworld",),
+            task_ids=("different-task",),
+            required_assumptions=("public-observation-only", "linear-family"),
+        ),
+        transfer=TransferStatus.CONTEXT_SPECIALIZED,
+    )
+    repository.admit(source)
+    hypothesis = ReactorMechanismHypothesis(
+        hypothesis_id="bad-lineage",
+        measurement_kind=MeasurementKind.DENSITY,
+        slope=100.0,
+        offset=90.0,
+        source_evidence_ids=("source-evidence",),
+        predictions=(
+            ReactorFrequencyPrediction(
+                target_crystal_uuid=202,
+                target_reactor_uuid=404,
+                predicted_frequency=1324.0,
+                frozen_step=0,
+            ),
+        ),
+        source_mechanism=source.ref,
+    )
+
+    with pytest.raises(ValueError, match="current transfer candidate"):
+        run_episode(
+            config=config(seed=1),
+            policy=RecordingPolicy(events, hypothesis=hypothesis),
+            repository=repository,
+            output_dir=tmp_path / "run",
+        )
+
+
+def test_policy_factory_cannot_mutate_shared_nested_config_between_arms() -> None:
+    seen: list[tuple[str, ...]] = []
+    original = {"nested": {"labels": ["original"]}}
+
+    def factory(config_dict):
+        labels = config_dict["nested"]["labels"]
+        seen.append(tuple(labels))
+        labels.append("mutated")
+        return RecordingPolicy([])
+
+    arena_module._create_policy(factory, original)
+    arena_module._create_policy(factory, original)
+
+    assert seen == [("original",), ("original",)]
+    assert original == {"nested": {"labels": ["original"]}}
