@@ -411,6 +411,7 @@ class AutonomousScientist:
         self._visited_location_contexts: set[
             tuple[str, tuple[int, ...]]
         ] = set()
+        self._location_visit_counts: dict[str, int] = {}
         self._visited_objects: set[int] = set()
         self._pair_trials = 0
         self._pair_type_counts: dict[tuple[str, str], int] = {}
@@ -1417,6 +1418,9 @@ class AutonomousScientist:
         self._visited_location_contexts.add(
             (location, self._inventory_signature(view))
         )
+        self._location_visit_counts[location] = (
+            self._location_visit_counts.get(location, 0) + 1
+        )
 
     def _next_location(
         self,
@@ -1436,14 +1440,18 @@ class AutonomousScientist:
             return None
         goal = set(_tokens(view.goal_text))
 
-        def score(location: str) -> tuple[float, str]:
+        def score(location: str) -> tuple[int, float, str]:
             tokens = set(_tokens(location))
             overlap = (
                 len(tokens & goal) / len(tokens)
                 if tokens
                 else 0.0
             )
-            return (-overlap, location)
+            return (
+                self._location_visit_counts.get(location, 0),
+                -overlap,
+                location,
+            )
 
         return min(candidates, key=score)
 
