@@ -562,56 +562,59 @@ def test_policy_factory_must_return_policy() -> None:
 def test_real_progressive_smoke_all_official_seeds(
     tmp_path: Path,
 ) -> None:
-    factory = load_policy_factory(
-        "tests.support.discoveryworld_policy:create_policy"
+    policy_config = tmp_path / "policy.json"
+    policy_config.write_text('{"model":"deterministic-test"}\n')
+    output_dir = tmp_path / "real-smoke"
+
+    exit_code = arena_module.main(
+        [
+            "--scenario",
+            "Reactor Lab",
+            "--difficulty",
+            "Normal",
+            "--seeds",
+            "0,1,2,3,4",
+            "--arms",
+            "cold,reuse",
+            "--max-steps",
+            "1",
+            "--output",
+            str(output_dir),
+            "--policy-factory",
+            "tests.support.discoveryworld_policy:create_policy",
+            "--policy-config",
+            str(policy_config),
+        ]
     )
 
-    result = run_progressive_transfer(
-        seeds=(0, 1, 2, 3, 4),
-        policy_factory=factory,
-        policy_config={"model": "deterministic-test"},
-        output_dir=tmp_path / "real-smoke",
-        max_steps=1,
-    )
+    assert exit_code == 0
+    summary = json.loads((output_dir / "summary.json").read_text())
+    assert [pair["seed"] for pair in summary["pairs"]] == [0, 1, 2, 3, 4]
+    assert len(summary["policy_config_hash"]) == 64
 
-    assert [pair.seed for pair in result.pairs] == [0, 1, 2, 3, 4]
-    for pair in result.pairs:
-        assert pair.cold.episode.evaluation.steps == 1
-        assert pair.reuse.episode.evaluation.steps == 1
-        assert (
-            tmp_path
-            / "real-smoke"
-            / f"seed-{pair.seed}"
-            / "cold"
-            / "final_scorecard.json"
-        ).exists()
-        assert (
-            tmp_path
-            / "real-smoke"
-            / f"seed-{pair.seed}"
-            / "reuse"
-            / "final_scorecard.json"
-        ).exists()
-
+    for pair in summary["pairs"]:
+        seed = pair["seed"]
         for arm in ("cold", "reuse"):
-            run_meta = json.loads(
-                (
-                    tmp_path
-                    / "real-smoke"
-                    / f"seed-{pair.seed}"
-                    / arm
-                    / "run.json"
-                ).read_text()
-            )
+            assert pair[arm]["steps"] == 1
+            run_dir = output_dir / f"seed-{seed}" / arm
+            assert (run_dir / "final_scorecard.json").exists()
+            assert (run_dir / "metrics.json").exists()
+
+            run_meta = json.loads((run_dir / "run.json").read_text())
             assert run_meta["arm"] == arm
-            assert run_meta["policy_config_hash"] == result.policy_config_hash
+            assert (
+                run_meta["policy_config_hash"]
+                == summary["policy_config_hash"]
+            )
             assert run_meta["discoveryworld_revision"] == (
                 "fd591323920be0d3786ef350955de1945aa571e5"
             )
             assert len(run_meta["ecsa_revision"]) == 40
             assert run_meta["timestamp_utc"].endswith("Z")
-            assert run_meta["mechanism_repository"] == "MLMDMechanismRepository"
-
+            assert (
+                run_meta["mechanism_repository"]
+                == "MLMDMechanismRepository"
+            )
 
 
 def test_transfer_summary_reports_per_seed_and_seed1_to4_aggregate(
