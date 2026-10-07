@@ -409,7 +409,7 @@ class AutonomousScientist:
         self._descriptions: dict[int, str] = {}
         self._attempted: set[tuple] = set()
         self._visited_location_contexts: set[
-            tuple[str, tuple[str, ...]]
+            tuple[str, tuple[int, ...]]
         ] = set()
         self._visited_objects: set[int] = set()
         self._pair_trials = 0
@@ -1400,14 +1400,12 @@ class AutonomousScientist:
     def _inventory_signature(
         self,
         view: AutonomousWorldView,
-    ) -> tuple[str, ...]:
+    ) -> tuple[int, ...]:
         return tuple(
             sorted(
-                {
-                    _base_name(entity.name)
-                    for entity in view.entities
-                    if entity.inventory and _base_name(entity.name)
-                }
+                entity.entity_id
+                for entity in view.entities
+                if entity.inventory
             )
         )
 
