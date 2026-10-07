@@ -305,6 +305,14 @@ def run_episode(
             },
         )
         action_result = environment.act(decision.action)
+        writer.append_jsonl(
+            "action_outcomes.jsonl",
+            {
+                "step": environment.steps,
+                "success": action_result.success,
+                "errors": action_result.errors,
+            },
+        )
         post = environment.observe()
         writer.append_jsonl(
             "observations.jsonl",
