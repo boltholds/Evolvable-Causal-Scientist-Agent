@@ -81,6 +81,10 @@ def test_generic_numeric_hypothesis_bridges_only_through_public_measurements(
     params = dict(annotated.parameters)
     assert params["transfer_key"] == "scalar-interaction-to-control"
     assert params["generic_degree"] == 1
+    assert annotated.scope.required_assumptions == (
+        "public-observation-only",
+        "generic-scalar-discovery",
+    )
 
 
 
