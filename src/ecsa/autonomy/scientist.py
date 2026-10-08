@@ -15,6 +15,7 @@ from ..world_model.experiments import (
 )
 from ..world_model.grounding import InteractionGrounder
 from ..world_model.relations import NumericRelationAcquisition
+from ..world_model.text_relations import TextRelationAcquisition
 from ..world_model.kernel import (
     WorldModelAcquisitionKernel,
     WorldModelUpdate,
@@ -32,6 +33,7 @@ class AutonomousScientist:
         experiments: ContractExperimentCoordinator,
         perception: PerceptionFrontend,
         relations: NumericRelationAcquisition | None = None,
+        text_relations: TextRelationAcquisition | None = None,
     ) -> None:
         if not isinstance(world_model, WorldModelAcquisitionKernel):
             raise TypeError(
@@ -46,6 +48,9 @@ class AutonomousScientist:
             )
         if relations is not None and not isinstance(relations, NumericRelationAcquisition):
             raise TypeError("relations must be NumericRelationAcquisition")
+        if text_relations is not None and not isinstance(text_relations, TextRelationAcquisition):
+            raise TypeError("text_relations must be TextRelationAcquisition")
+        self.text_relations = text_relations
         self.relations = relations
         self.world_model = world_model
         self.experiments = experiments
@@ -119,4 +124,6 @@ class AutonomousScientist:
         update = self.world_model.observe_grounding(grounding)
         if self.relations is not None:
             self.relations.observe_transition(transition, before, after)
+        if self.text_relations is not None:
+            self.text_relations.observe_transition(transition)
         return update

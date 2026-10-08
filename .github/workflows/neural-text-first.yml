@@ -1,0 +1,69 @@
+name: neural-text-first
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/ecsa/world_model/text_relations.py"
+      - "src/ecsa/experimental/text_first_kan.py"
+      - "src/ecsa/autonomy/scientist.py"
+      - "tests/test_world_model_text_relations.py"
+      - "tests/test_text_first_kan.py"
+      - ".github/workflows/neural-text-first.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: neural-text-first-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  text-first-kan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install CPU-only PyTorch
+        run: python -m pip install "torch>=2.3,<3" --index-url https://download.pytorch.org/whl/cpu
+      - name: Install optional test and neural dependencies
+        run: python -m pip install -e '.[test,neural-relations]'
+      - name: RED GREEN gates including no-future leakage
+        run: python -m pytest -q tests/test_world_model_text_relations.py tests/test_text_first_kan.py tests/test_world_model_relations.py tests/test_autonomous_scientist.py
+      - name: Three-way representation and KAN/MLP ablation
+        run: |
+          python -m ecsa.experimental.text_first_kan \
+            --seeds 0 1 2 --samples 144 --holdout 96 \
+            --feature-size 64 --steps 130 \
+            --output text-first-results/results.json > text-first-results-summary.txt
+      - name: Check exact ablation arms and budgets
+        run: |
+          python - <<'PY'
+          import json
+          from collections import defaultdict
+          from pathlib import Path
+          data = json.loads(Path('text-first-results/results.json').read_text())
+          rows = data['results']
+          assert len(rows) == 54, len(rows)
+          group = defaultdict(list)
+          for row in rows:
+              assert row['train_observations'] == 144
+              assert row['heldout_observations'] == 96
+              assert row['train_object_id_overlap'] == 0
+              group[(row['law'], row['seed'])].append(row)
+          for key, items in group.items():
+              assert len(items) == 6, key
+              assert len({i['parameter_count'] for i in items if i['relation_head']=='spline_kan'}) == 1
+              assert len({i['parameter_count'] for i in items if i['relation_head']=='mlp'}) == 1
+          print(Path('text-first-results-summary.txt').read_text())
+          print('ABLACTION VERIFIED: 3 laws x 3 seeds x 3 representations x 2 relation heads')
+          PY
+      - name: Preserve individual outcome scores
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: neural-text-first-${{ github.sha }}
+          path: |
+            text-first-results/
+            text-first-results-summary.txt
+          if-no-files-found: ignore

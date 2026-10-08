@@ -87,6 +87,11 @@ class NumericRelationSample:
     success: bool
     changed: bool
 
+    @property
+    def target(self) -> RelationTarget:
+        """Typed convenience accessor for the signature target."""
+        return self.signature.target
+
     def __post_init__(self) -> None:
         if not self.transition_id or not self.before_id or not self.after_id:
             raise ValueError("relation sample requires provenance identifiers")
