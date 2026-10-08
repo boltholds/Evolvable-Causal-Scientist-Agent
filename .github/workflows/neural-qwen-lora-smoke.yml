@@ -1,0 +1,65 @@
+name: neural-qwen-lora-smoke
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/neural-qwen-lora-smoke.yml'
+      - 'src/ecsa/experimental/pretrained_text_study.py'
+  workflow_dispatch:
+
+concurrency:
+  group: neural-qwen-lora-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  actual-qwen-lora-cpu:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    env:
+      TOKENIZERS_PARALLELISM: 'false'
+      OMP_NUM_THREADS: '3'
+      HF_HUB_DISABLE_XET: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install CPU PyTorch
+        run: pip install 'torch>=2.3,<3' --index-url https://download.pytorch.org/whl/cpu
+      - name: Install encoder/LoRA dependencies
+        run: pip install -e '.[pretrained-encoder]'
+      - name: Adapt Qwen3 embedding on observed X/Y pairs (CPU smoke)
+        run: |
+          python -m ecsa.experimental.pretrained_text_study \
+            --model Qwen/Qwen3-Embedding-0.6B \
+            --revision 3d106eabb5535a84de3ae88f45887a78259b52de \
+            --arms frozen_pretrained_text lora_pretrained_text \
+            --laws interaction --seeds 0 --train-samples 48 --heldout-samples 24 \
+            --feature-size 64 --steps 75 --max-seq-length 96 \
+            --batch-size 4 --lora-batch-size 2 --lora-steps 6 \
+            --allow-cpu-lora --device cpu \
+            --output results/qwen_lora_cpu.json
+      - name: Compare adapted vs frozen on identical split
+        run: |
+          python - <<'PY'
+          import json
+          d=json.load(open('results/qwen_lora_cpu.json'))
+          rows=d['results']
+          assert len(rows)==4
+          assert {r['arm'] for r in rows} == {
+              'frozen_pretrained_text','lora_pretrained_text'
+          }
+          assert len({r['kan_parameters'] for r in rows})==1
+          assert all(r['train_test_identity_overlap']==0 for r in rows)
+          for row in rows:
+              print(row['arm'],row['eval_domain'],'AUROC',round(row['auroc'],4),
+                    'Brier',round(row['brier'],4))
+          print('ADAPTATION COMPLETE: six CPU LoRA steps; not full GPU training')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: qwen-lora-cpu-smoke-${{ github.sha }}
+          path: results/
+          if-no-files-found: ignore
