@@ -1,0 +1,171 @@
+name: neural-token-state
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/ecsa/experimental/token_state_feedback.py'
+      - 'tests/test_token_state_feedback.py'
+      - 'docs/experiments/2026-10-08-qwen-token-state-feedback.md'
+      - '.github/workflows/neural-token-state.yml'
+      - 'pyproject.toml'
+  workflow_dispatch:
+
+concurrency:
+  group: neural-token-state-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  offline-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install CPU Torch
+        run: python -m pip install 'torch>=2.3,<3' --index-url https://download.pytorch.org/whl/cpu
+      - name: Install test dependencies
+        run: python -m pip install -e '.[test,neural-relations]'
+      - name: Test token masking, no truncation and gradient feedback
+        run: python -m pytest -q tests/test_token_state_feedback.py tests/test_feedback_encoder.py
+      - name: Offline deterministic token stub ablation
+        run: |
+          mkdir -p results
+          python - <<'PY'
+          import json
+          from dataclasses import asdict
+          from importlib.util import module_from_spec, spec_from_file_location
+          from ecsa.experimental.verbalization_study import StudyLaw
+          from ecsa.experimental.token_state_feedback import TokenFeedbackConfig, benchmark_one, StateArm
+          spec=spec_from_file_location('teststub','tests/test_token_state_feedback.py')
+          module=module_from_spec(spec);spec.loader.exec_module(module)
+          port=module.port()
+          cfg=TokenFeedbackConfig(bootstrap=12,adaptation=8,calibration=8,
+                 heldout=9,warmup_steps=10,feedback_steps=6,checkpoint_every=3)
+          scores=[asdict(r) for law in (StudyLaw.PRECISION,StudyLaw.OPERATOR,StudyLaw.RANGE_SHIFT)
+                  for seed in (0,1)
+                  for r in benchmark_one(law,seed,cfg,port,model_id='OFFLINE_STUB',revision='stub')]
+          assert len(scores)==126
+          assert all(r['identity_overlap']==0 for r in scores)
+          assert all(r['head_parameters']==scores[0]['head_parameters'] for r in scores)
+          assert all(r['model_width']==96 for r in scores)
+          assert port.forward_calls>0
+          with open('results/offline_stub.json','w') as f: json.dump({'scores':scores,'stub_not_pretrained':True},f,indent=2)
+          print('OFFLINE STUB:',len(scores),'scores; all 7 arms and 3 evaluation domains')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: token-state-contracts-${{ github.sha }}
+          path: results/
+          if-no-files-found: ignore
+
+  minilm-token-states-cpu:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      TOKENIZERS_PARALLELISM: 'false'
+      OMP_NUM_THREADS: '3'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install CPU Torch
+        run: python -m pip install 'torch>=2.3,<3' --index-url https://download.pytorch.org/whl/cpu
+      - name: Install pretrained embeddings
+        run: python -m pip install -e '.[test,pretrained-encoder]'
+      - name: Compare full contextual states with sentence baselines
+        run: |
+          python -m ecsa.experimental.token_state_feedback \
+            --model sentence-transformers/all-MiniLM-L6-v2 \
+            --laws precision operator range_shift sign --seeds 0 1 \
+            --bootstrap 24 --adaptation 16 --calibration 12 --heldout 24 \
+            --warmup-steps 45 --feedback-steps 24 \
+            --max-seq-length 320 --batch-size 8 --device cpu \
+            --output results/minilm_token_states.json | tee minilm-summary.txt
+      - name: Verify matched KAN heads, independent entities and all arms
+        run: |
+          python - <<'PY'
+          import json
+          from collections import defaultdict
+          from pathlib import Path
+          d=json.loads(Path('results/minilm_token_states.json').read_text())
+          scores=d['scores']; assert len(scores)==4*2*7*3,len(scores)
+          assert d['model']=='sentence-transformers/all-MiniLM-L6-v2'
+          by=defaultdict(list)
+          for r in scores:
+              assert r['identity_overlap']==0
+              assert r['train_pairs']==40 and r['validation_pairs']==12 and r['heldout_pairs']==24
+              by[(r['law'],r['seed'],r['domain'])].append(r)
+          assert all(len(group)==7 and len({r['head_parameters'] for r in group})==1
+                     for group in by.values())
+          for arm in sorted({r['arm'] for r in scores}):
+              group=[r for r in scores if r['arm']==arm and r['domain']=='counterfactual']
+              print(arm,'mean counterfactual AUROC',sum(r['auroc'] for r in group)/len(group))
+          print('MINILM TOKEN-STATE PROTOCOL VERIFIED:',len(scores))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: token-states-minilm-${{ github.sha }}
+          path: |
+            results/
+            minilm-summary.txt
+          if-no-files-found: ignore
+
+  qwen-context-tokens-cpu:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      TOKENIZERS_PARALLELISM: 'false'
+      OMP_NUM_THREADS: '3'
+      HF_HUB_DISABLE_XET: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install CPU Torch
+        run: python -m pip install 'torch>=2.3,<3' --index-url https://download.pytorch.org/whl/cpu
+      - name: Install Qwen embedding dependencies
+        run: python -m pip install -e '.[test,pretrained-encoder]'
+      - name: Evaluate actual Qwen 1024-dimensional contextual BPE tokens
+        run: |
+          python -m ecsa.experimental.token_state_feedback \
+            --model Qwen/Qwen3-Embedding-0.6B \
+            --revision 3d106eabb5535a84de3ae88f45887a78259b52de \
+            --laws precision operator --seeds 0 \
+            --bootstrap 24 --adaptation 12 --calibration 8 --heldout 16 \
+            --warmup-steps 45 --feedback-steps 24 \
+            --max-seq-length 256 --batch-size 4 --device cpu \
+            --output results/qwen_full_token_states.json | tee qwen-summary.txt
+      - name: Confirm real Qwen run and no truncation
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.loads(Path('results/qwen_full_token_states.json').read_text())
+          assert d['model']=='Qwen/Qwen3-Embedding-0.6B'
+          assert d['revision']=='3d106eabb5535a84de3ae88f45887a78259b52de'
+          assert d['max_seen_length']<=256
+          assert d['audited_texts']>0 and d['backbone_forward_batches']>0
+          rows=d['scores'];assert len(rows)==2*1*7*3,len(rows)
+          assert all(r['model_width']==1024 and r['identity_overlap']==0 for r in rows)
+          assert len({r['head_parameters'] for r in rows})==1
+          for row in rows:
+              if row['domain']=='counterfactual':
+                  print(row['law'],row['arm'],round(row['auroc'],4),
+                        'Brier',round(row['brier'],4))
+          print('REAL QWEN TOKENS VERIFIED;',len(rows),'scores')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: qwen-full-context-token-feedback-${{ github.sha }}
+          path: |
+            results/
+            qwen-summary.txt
+          if-no-files-found: ignore
