@@ -12,7 +12,7 @@ torch=pytest.importorskip("torch")
 
 from ecsa.experimental.token_state_relations import TokenStates
 from ecsa.experimental.verified_relation_kan import (
-    PoolKind, ProjectionKind, ReplayWitness, StudyConfig,
+    PoolKind, ProjectionKind, NegativeTraining, ReplayWitness, StudyConfig,
     ContextStatePort, extract_frozen_vectors,
     fixture_replay_witnesses, mine_repeat_supported_pairs,
     fit_train_only_projection, WideSplineKAN, RelationPopulation,
@@ -208,3 +208,36 @@ def test_unsupported_latent_dimension_raises():
         fit_train_only_projection(a,a,kind=ProjectionKind.PCA,width=1,seed=1)
     with pytest.raises(TypeError):
         extract_frozen_vectors(FixedEncoderStub(),("X",),"sentence_full")
+
+
+def test_identical_heldout_pairs_for_verified_and_old_shuffled_training():
+    cfg=StudyConfig(train_count=32,calibration_count=16,heldout_count=12,
+                    replays_per_x=3,warmup_steps=12,checkpoint_every=3)
+    rows=benchmark_one(
+        port=FixedEncoderStub(),law=StudyLaw.OPERATOR,seed=0,config=cfg,
+        pools=(PoolKind.SENTENCE_FULL,),
+        projections=(ProjectionKind.RANDOM,ProjectionKind.PCA),
+        dimensions=(2,),
+        pairing=(NegativeTraining.WITNESSED,NegativeTraining.SHUFFLED_Y_UNSAFE_CONTROL),
+    )
+    assert len(rows)==4
+    for projection in ProjectionKind:
+        group=[r for r in rows if r.projection is projection]
+        assert len(group)==2
+        assert {r.negative_training for r in group}==set(NegativeTraining)
+        assert len({r.train_pairs for r in group})==1
+        assert len({r.heldout_pairs for r in group})==1
+        assert len({r.kan_parameters for r in group})==1
+        assert all(0<=r.heldout_auroc<=1 for r in group)
+    # Diagnostic: old Y rotation is contaminated under binary outcomes.
+    assert rows[0].train_shuffled_false_negative_fraction>0
+
+
+def test_pca_rejects_more_latent_axes_than_training_samples_allow():
+    matrix=np.random.default_rng(22).normal(size=(16,48)).astype(np.float32)
+    with pytest.raises(ValueError,match="training sample count"):
+        fit_train_only_projection(matrix,matrix,kind=ProjectionKind.PCA,
+                                  width=16,seed=0)
+    random=fit_train_only_projection(matrix,matrix,kind=ProjectionKind.RANDOM,
+                                    width=16,seed=0)
+    assert random.x_basis.shape==(48,16)

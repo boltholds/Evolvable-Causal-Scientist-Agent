@@ -40,6 +40,11 @@ class ProjectionKind(StrEnum):
     PCA = "train_only_pca"
 
 
+class NegativeTraining(StrEnum):
+    WITNESSED = "witnessed"
+    SHUFFLED_Y_UNSAFE_CONTROL = "shuffled_y_unsafe_control"
+
+
 @dataclass(frozen=True)
 class ReplayWitness:
     """Independent environment replays with exactly the same observed X/action.
@@ -222,6 +227,8 @@ def _fit_side(matrix: np.ndarray, kind: ProjectionKind, width: int,
     n,feature_width=matrix.shape
     if width>feature_width:
         raise ValueError("latent dimension exceeds frozen feature dimension")
+    if kind is ProjectionKind.PCA and width>=n:
+        raise ValueError("PCA width must be less than the training sample count")
     center=matrix.mean(axis=0).astype(np.float32)
     demeaned=np.asarray(matrix-center,dtype=np.float64)
     if kind is ProjectionKind.PCA:
@@ -300,7 +307,9 @@ class StudyConfig:
         for field in ("train_count","calibration_count","heldout_count",
                       "replays_per_x","warmup_steps","checkpoint_every"):
             value=getattr(self,field)
-            if type(value) is not int or value < (3 if field=="replays_per_x" else 4):
+            floor=(3 if field=="replays_per_x" else
+                   1 if field=="checkpoint_every" else 4)
+            if type(value) is not int or value<floor:
                 raise ValueError(f"{field} must be an integer >=4 (replays >=3)")
         if not 0.0<self.lr<0.1:
             raise ValueError("invalid optimizer lr")
@@ -422,6 +431,7 @@ class StudyRow:
     seed:int
     pool:PoolKind
     projection:ProjectionKind
+    negative_training:NegativeTraining
     dimension:int
     train_pairs:int
     calibration_pairs:int
@@ -443,8 +453,9 @@ def benchmark_one(
     pools:tuple[PoolKind,...]=(PoolKind.SENTENCE_FULL,),
     projections:tuple[ProjectionKind,...]=(ProjectionKind.RANDOM,ProjectionKind.PCA),
     dimensions:tuple[int,...]=(2,8,16,32),
+    pairing:tuple[NegativeTraining,...]=(NegativeTraining.WITNESSED,),
 ) -> tuple[StudyRow,...]:
-    if not pools or not projections or not dimensions:
+    if not pools or not projections or not dimensions or not pairing:
         raise ValueError("nonempty ablation axes required")
     if not all(isinstance(x,PoolKind) for x in pools):
         raise TypeError("PoolKind required")
@@ -452,6 +463,8 @@ def benchmark_one(
         raise TypeError("ProjectionKind required")
     if len(set(dimensions))!=len(dimensions):
         raise ValueError("duplicate latent dimensions")
+    if len(set(pairing))!=len(pairing) or not all(isinstance(x,NegativeTraining) for x in pairing):
+        raise ValueError("unique typed negative-training methods required")
     # Train, calibration and heldout are obtained by independently seeded
     # simulated environments; never reuse a pooled cross-split PCA basis.
     train_w=fixture_replay_witnesses(
@@ -490,21 +503,29 @@ def benchmark_one(
                     train_vec[0],train_vec[1],kind=proj_type,width=latent,
                     seed=seed*37+int(latent),
                 )
-                tr=_project_pairs(fitted,train_vec)
+                witnessed_train=_project_pairs(fitted,train_vec)
                 ca=_project_pairs(fitted,cal_vec)
                 he=_project_pairs(fitted,held_vec)
-                trained,best=fit_kan_with_witnesses(
-                    tr,ca,dimension=latent,seed=seed,config=config)
-                auc,paired,brier,nll=_metrics(trained,he)
-                rows.append(StudyRow(
-                    law.value,seed,pool,proj_type,latent,
-                    len(train.samples),len(calibration.samples),len(heldout.samples),
-                    train.audit.shuffled_false_negative_fraction,
-                    train.audit.no_disjoint_alternative,
-                    auc,paired,brier,nll,best,
-                    sum(p.numel() for p in trained.parameters()),
-                    port.dimension,overlap,
-                ))
+                for label_scheme in pairing:
+                    if label_scheme is NegativeTraining.SHUFFLED_Y_UNSAFE_CONTROL:
+                        # Historical control ONLY: labels include known false negatives
+                        # whenever adjacent observed Ys happen to be equal.
+                        xx, positive, _=witnessed_train
+                        training=(xx,positive,torch.roll(positive,1,dims=0))
+                    else:
+                        training=witnessed_train
+                    trained,best=fit_kan_with_witnesses(
+                        training,ca,dimension=latent,seed=seed,config=config)
+                    auc,paired,brier,nll=_metrics(trained,he)
+                    rows.append(StudyRow(
+                        law.value,seed,pool,proj_type,label_scheme,latent,
+                        len(train.samples),len(calibration.samples),len(heldout.samples),
+                        train.audit.shuffled_false_negative_fraction,
+                        train.audit.no_disjoint_alternative,
+                        auc,paired,brier,nll,best,
+                        sum(p.numel() for p in trained.parameters()),
+                        port.dimension,overlap,
+                    ))
     return tuple(rows)
 
 
@@ -524,6 +545,9 @@ def main()->None:
     parser.add_argument("--projection",nargs="+",choices=[x.value for x in ProjectionKind],
                         default=[x.value for x in ProjectionKind])
     parser.add_argument("--dimensions",nargs="+",type=int,default=[2,8,16,32])
+    parser.add_argument("--pairing",nargs="+",
+                        choices=[x.value for x in NegativeTraining],
+                        default=[NegativeTraining.WITNESSED.value])
     parser.add_argument("--train",type=int,default=48)
     parser.add_argument("--calibration",type=int,default=16)
     parser.add_argument("--heldout",type=int,default=24)
@@ -547,6 +571,7 @@ def main()->None:
             pools=tuple(PoolKind(x) for x in args.pool),
             projections=tuple(ProjectionKind(x) for x in args.projection),
             dimensions=tuple(args.dimensions),
+            pairing=tuple(NegativeTraining(x) for x in args.pairing),
         )
     ]
     payload={
@@ -563,6 +588,8 @@ def main()->None:
             "PCA fitted only on train X/Y positives; dimension comparisons alter KAN parameter count.",
             "An observed mismatch from a different intervention is a legitimate negative "
             "only given the declared deterministic full-state environment assumption.",
+            "The shuffled_y_unsafe_control arm is FOR DIAGNOSTICS ONLY and deliberately "
+            "contains false negative labels; evaluation remains replay-supported.",
             "Synthetic operator outcomes are binary, making shuffled-Y invalid often.",
             "AUROC is a pair-compatibility metric, not p(Y|do(X)) or causal identification.",
         ],
@@ -575,7 +602,8 @@ def main()->None:
         "rows":len(result),
         "results":[
             {"law":r["law"],"pool":r["pool"],"projection":r["projection"],
-             "dim":r["dimension"],"auroc":round(r["heldout_auroc"],4),
+             "dim":r["dimension"],"pairing":r["negative_training"],
+             "auroc":round(r["heldout_auroc"],4),
              "pairs":r["train_pairs"]}
             for r in result
         ],

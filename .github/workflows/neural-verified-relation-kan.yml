@@ -76,7 +76,8 @@ jobs:
             --pool sentence_full token_mean \
             --projection random train_only_pca \
             --dimensions 2 8 16 32 \
-            --train 24 --calibration 12 --heldout 12 \
+            --pairing witnessed shuffled_y_unsafe_control \
+            --train 48 --calibration 12 --heldout 12 \
             --replays 3 --steps 35 --max-length 1024 \
             --output results/small_qwen_verified.json \
             | tee results_summary.json
@@ -91,14 +92,14 @@ jobs:
           assert data['no_oracle_label_in_negative_miner'] is True
           assert data['replays_are_deterministic_fixture_only'] is True
           rows=data['rows']
-          assert len(rows)==2*2*2*4, len(rows)
+          assert len(rows)==2*2*2*4*2, len(rows)
           grouped=defaultdict(list)
           for row in rows:
               assert row['identity_overlap']==0
               assert row['train_pairs']>0 and row['calibration_pairs']>0
               assert row['heldout_pairs']>0
               assert 0<=row['heldout_auroc']<=1
-              grouped[(row['law'],row['pool'],row['dimension'])].append(row)
+              grouped[(row['law'],row['pool'],row['dimension'],row['negative_training'])].append(row)
           assert all(len(group)==2 and len({r['kan_parameters'] for r in group})==1
                      for group in grouped.values())
           for law in ('precision','operator'):
@@ -106,7 +107,7 @@ jobs:
               print(law,'pairs',candidates[0]['train_pairs'],
                     'shuffled_false_negative_fraction',
                     candidates[0]['train_shuffled_false_negative_fraction'])
-              print('auroc by method',[(r['projection'],r['dimension'],
+              print('auroc by method',[(r['projection'],r['negative_training'],r['dimension'],
                        round(r['heldout_auroc'],4)) for r in candidates
                        if r['pool']=='sentence_full'])
           print('ACTUAL 0.5B QWEN VERIFIED; BehR-7B NOT RUN')

@@ -39,7 +39,9 @@ PCA and random controls have exactly the same KAN architecture, number
 of parameters, observed data, training/validation splits and optimizer steps.
 PCA is an unsupervised variance-preserving baseline, not guaranteed to
 capture low-variance causal features. Frozen random and PCA bases are fitted
-separately for X and Y.
+separately for X and Y. To avoid fictitious zero-variance PCA axes, its
+requested latent width must be **smaller than the number of training pairs**;
+for the full 32-dimensional arm, use at least 33 train pairs.
 
 ## Replay-supported counterexamples
 
@@ -70,8 +72,18 @@ For stochastic environments, eventually learn a conditional outcome-support
 model or valid likelihood instead of incompatible-pair classifiers.
 
 The fraction of collisions from the old shifted-Y protocol is reported
-as a *diagnostic* (not a training target). A balanced binary example yields
-50% shifted-label collisions and 0% collisions among mined disjoint outcomes.
+as a *diagnostic*. A balanced binary example yields 50% shifted-label collisions
+and 0% collisions among mined disjoint outcomes.
+
+For a matched training-label ablation, add
+`--pairing witnessed shuffled_y_unsafe_control`. Both methods then use
+exactly the same **X and positive Y**, the same PCA/random training-only
+basis, identical KAN initialization, calibration observations, steps, and
+**identical replay-supported heldout evaluation pairs**. Only the negatives
+used for fitting change. The `shuffled_y_unsafe_control` label must never
+be used as a source of scientific truth; it deliberately reproduces
+historical false-negative contamination. The accepted default remains
+`--pairing witnessed`.
 
 ## Train/test protocol
 
@@ -116,6 +128,7 @@ comparison, **not a BehR result**.
       --dimensions 2 8 16 32 \
       --train 48 --calibration 16 --heldout 24 \
       --replays 3 --steps 100 --max-length 1024 \
+      --pairing witnessed shuffled_y_unsafe_control \
       --output results/behr_verified.json
 
 Record the actual Hugging Face revision with the JSON result, and repeat
