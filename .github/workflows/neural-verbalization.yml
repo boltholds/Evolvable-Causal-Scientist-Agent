@@ -1,0 +1,169 @@
+name: neural-verbalization
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - src/ecsa/experimental/verbalized_state.py
+      - src/ecsa/experimental/verbalization_study.py
+      - tests/test_verbalized_state.py
+      - tests/test_verbalization_study.py
+      - .github/workflows/neural-verbalization.yml
+      - pyproject.toml
+  workflow_dispatch:
+
+concurrency:
+  group: neural-verbalization-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  offline-unit-and-negative-controls:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install CPU Torch
+        run: pip install 'torch>=2.3,<3' --index-url https://download.pytorch.org/whl/cpu
+      - name: Install optional core tests
+        run: pip install -e '.[test,neural-relations]'
+      - name: Exact numeracy/symbol and no-leakage tests
+        run: python -m pytest -q tests/test_verbalized_state.py tests/test_verbalization_study.py
+      - name: CPU hash and numeric baselines with identical feedback budgets
+        run: |
+          python -m ecsa.experimental.verbalization_study \
+            --arms hash_control numeric_control \
+            --laws operator precision sign \
+            --seeds 0 1 --bootstrap 12 --adaptation 8 --calibration 6 \
+            --heldout 12 --warmup-steps 25 --feedback-steps 12 \
+            --dimension 64 --output results/offline.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: verbalization-offline-${{ github.sha }}
+          path: results/
+          if-no-files-found: ignore
+
+  pretrained-minilm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      TOKENIZERS_PARALLELISM: 'false'
+      OMP_NUM_THREADS: '3'
+      HF_HUB_DISABLE_XET: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install CPU Torch
+        run: pip install 'torch>=2.3,<3' --index-url https://download.pytorch.org/whl/cpu
+      - name: Install pretrained encoder dependencies
+        run: pip install -e '.[test,pretrained-encoder]'
+      - name: Five-law seven-encoding matched KAN feedback ablation
+        run: |
+          python -m ecsa.experimental.verbalization_study \
+            --model sentence-transformers/all-MiniLM-L6-v2 \
+            --arms raw semantic_words digit_words raw_plus_words hash_control numeric_control raw_plus_numeric_control \
+            --laws continuous precision operator sign range_shift \
+            --seeds 0 1 --bootstrap 24 --adaptation 16 --calibration 8 \
+            --heldout 24 --warmup-steps 45 --feedback-steps 20 \
+            --dimension 64 --max-seq-length 256 --batch-size 8 \
+            --output results/minilm.json > results_minilm_summary.json
+      - name: Check exact paired budgets and report counterfactual AUROC
+        run: |
+          python - <<'PY'
+          import json
+          from collections import defaultdict
+          rows=json.load(open('results/minilm.json'))['rows']
+          assert len(rows)==(5*2*7*2*3),len(rows)
+          grouped=defaultdict(list)
+          for r in rows:
+              assert r['train_pairs']==48 and r['heldout_pairs']==24
+              assert r['train_test_identity_overlap']==0
+              assert r['input_size']==128
+              grouped[(r['law'],r['seed'],r['domain'],r['mode'])].append(r)
+          for k,group in grouped.items():
+              assert len(group)==7,k
+              assert len({g['kan_parameters'] for g in group})==1
+          for arm in sorted({r['arm'] for r in rows}):
+              for mode in ('frozen','alternating'):
+                  subset=[r['auroc'] for r in rows if r['arm']==arm and r['mode']==mode and r['domain']=='counterfactual']
+                  print(f'{arm}/{mode}: mean counterfactual AUROC={sum(subset)/len(subset):.4f} n={len(subset)}')
+          print('MATCHED REPRESENTATION AND FEEDBACK BUDGET VERIFIED')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: verbalization-minilm-${{ github.sha }}
+          path: |
+            results/
+            results_minilm_summary.json
+          if-no-files-found: ignore
+
+  pinned-qwen-pretrained:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        law: [precision, operator]
+    env:
+      TOKENIZERS_PARALLELISM: 'false'
+      OMP_NUM_THREADS: '3'
+      HF_HUB_DISABLE_XET: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install CPU Torch
+        run: pip install 'torch>=2.3,<3' --index-url https://download.pytorch.org/whl/cpu
+      - name: Install frozen-Qwen encoder dependencies
+        run: pip install -e '.[test,pretrained-encoder]'
+      - name: Qwen3 frozen full-text verbalization against exact numeric control
+        run: |
+          python -m ecsa.experimental.verbalization_study \
+            --model Qwen/Qwen3-Embedding-0.6B \
+            --revision 3d106eabb5535a84de3ae88f45887a78259b52de \
+            --arms raw semantic_words digit_words raw_plus_words hash_control numeric_control raw_plus_numeric_control \
+            --laws ${{ matrix.law }} --seeds 0 \
+            --bootstrap 16 --adaptation 10 --calibration 8 \
+            --heldout 16 --warmup-steps 45 --feedback-steps 16 \
+            --dimension 64 --max-seq-length 512 --batch-size 4 \
+            --output results/qwen-${{ matrix.law }}.json > summary-qwen-${{ matrix.law }}.json
+      - name: Check no leakage and frozen/feedback paired comparisons
+        run: |
+          python - <<'PY'
+          import json
+          from collections import defaultdict
+          law='${{ matrix.law }}'
+          rows=json.load(open(f'results/qwen-{law}.json'))['rows']
+          assert len(rows)==7*2*3,len(rows)
+          for r in rows:
+              assert r['input_size']==128
+              assert r['train_pairs']==34 and r['heldout_pairs']==16
+              assert r['train_test_identity_overlap']==0
+          grouped=defaultdict(list)
+          for r in rows:
+              grouped[(r['mode'],r['domain'])].append(r)
+          assert len(grouped)==6
+          assert all(len(g)==7 and len({r['kan_parameters'] for r in g})==1 for g in grouped.values())
+          for r in rows:
+              if r['domain']=='counterfactual':
+                  print(r['arm'],r['mode'],'AUROC',round(r['auroc'],4),
+                        'Brier',round(r['brier'],4),
+                        'token_truncation',r['token_truncation_rate'],
+                        'max_tokens',r['observed_max_tokens'])
+          print('QWEN CONTRAST RUN COMPLETE; no improvement assumed')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: verbalization-qwen-${{ matrix.law }}-${{ github.sha }}
+          path: |
+            results/
+            summary-qwen-${{ matrix.law }}.json
+          if-no-files-found: ignore
