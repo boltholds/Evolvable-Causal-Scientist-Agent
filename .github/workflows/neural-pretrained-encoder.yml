@@ -1,0 +1,138 @@
+name: neural-pretrained-encoder
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/ecsa/experimental/pretrained_text_study.py'
+      - 'tests/test_pretrained_text_study.py'
+      - '.github/workflows/neural-pretrained-encoder.yml'
+      - 'pyproject.toml'
+  workflow_dispatch:
+
+concurrency:
+  group: neural-pretrained-encoder-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  offline-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install CPU Torch
+        run: pip install 'torch>=2.3,<3' --index-url https://download.pytorch.org/whl/cpu
+      - name: Install core tests
+        run: pip install -e '.[test,neural-relations]'
+      - name: Verify frozen adapter contracts and no hidden test labels
+        run: pytest -q tests/test_pretrained_text_study.py tests/test_text_first_kan.py
+      - name: Hash and numeric baseline run without model downloads
+        run: |
+          python -m ecsa.experimental.pretrained_text_study \
+            --arms hash_text numeric_only --laws categorical numeric interaction \
+            --seeds 0 1 --train-samples 64 --heldout-samples 32 \
+            --feature-size 64 --steps 80 \
+            --output results/offline_baselines.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: frozen-text-offline-${{ github.sha }}
+          path: results/
+          if-no-files-found: ignore
+
+  mini-pretrained-cpu:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      TOKENIZERS_PARALLELISM: 'false'
+      OMP_NUM_THREADS: '4'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install CPU Torch
+        run: pip install 'torch>=2.3,<3' --index-url https://download.pytorch.org/whl/cpu
+      - name: Install pretrained embedding dependencies
+        run: pip install -e '.[pretrained-encoder]'
+      - name: Run actual pretrained-vs-hash/numeric/hybrid control
+        run: |
+          python -m ecsa.experimental.pretrained_text_study \
+            --model sentence-transformers/all-MiniLM-L6-v2 \
+            --arms hash_text frozen_pretrained_text frozen_pretrained_hybrid numeric_only \
+            --laws categorical numeric interaction --seeds 0 1 \
+            --train-samples 64 --heldout-samples 32 \
+            --feature-size 64 --steps 80 --max-seq-length 192 --batch-size 8 \
+            --output results/minilm_pretrained.json
+      - name: Validate identical budgets
+        run: |
+          python - <<'PY'
+          import json
+          from collections import defaultdict
+          d=json.load(open('results/minilm_pretrained.json'))
+          assert len(d['results'])==3*2*4*2, len(d['results'])
+          groups=defaultdict(list)
+          for item in d['results']:
+              assert item['train_test_identity_overlap']==0
+              groups[(item['law'],item['seed'],item['eval_domain'])].append(item)
+          for rows in groups.values():
+              assert len(rows)==4
+              assert len({r['kan_parameters'] for r in rows})==1
+              assert len({r['train_pairs'] for r in rows})==1
+              assert len({r['eval_pairs'] for r in rows})==1
+          for arm in sorted({r['arm'] for r in d['results']}):
+              row=[r for r in d['results'] if r['arm']==arm and r['eval_domain']=='heldout']
+              print(arm, 'mean heldout AUROC',sum(r['auroc'] for r in row)/len(row))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: frozen-text-minilm-${{ github.sha }}
+          path: results/
+          if-no-files-found: ignore
+
+  qwen-frozen-cpu:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      TOKENIZERS_PARALLELISM: 'false'
+      OMP_NUM_THREADS: '4'
+      HF_HUB_DISABLE_XET: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install CPU Torch
+        run: pip install 'torch>=2.3,<3' --index-url https://download.pytorch.org/whl/cpu
+      - name: Install pretrained encoder dependencies
+        run: pip install -e '.[pretrained-encoder]'
+      - name: Run Qwen3-Embedding-0.6B frozen on a controlled interaction task
+        run: |
+          python -m ecsa.experimental.pretrained_text_study \
+            --model Qwen/Qwen3-Embedding-0.6B \
+            --revision 3d106eabb5535a84de3ae88f45887a78259b52de \
+            --arms hash_text frozen_pretrained_text frozen_pretrained_hybrid numeric_only \
+            --laws interaction --seeds 0 \
+            --train-samples 48 --heldout-samples 24 \
+            --feature-size 64 --steps 75 --max-seq-length 128 --batch-size 4 \
+            --output results/qwen_frozen_interaction.json
+      - name: Validate independent train/test identities and matched KAN head
+        run: |
+          python - <<'PY'
+          import json
+          d=json.load(open('results/qwen_frozen_interaction.json'))
+          assert len(d['results'])==8
+          assert len({r['kan_parameters'] for r in d['results']})==1
+          assert all(r['train_test_identity_overlap']==0 for r in d['results'])
+          print([(r['arm'],r['eval_domain'],round(r['auroc'],4)) for r in d['results']])
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: frozen-text-qwen-${{ github.sha }}
+          path: results/
+          if-no-files-found: ignore
