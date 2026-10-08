@@ -1,0 +1,121 @@
+name: neural-mechanism-shift
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/ecsa/experimental/mechanism_shift.py"
+      - "src/ecsa/experimental/analyze_mechanism_shift.py"
+      - "tests/test_mechanism_shift*.py"
+      - ".github/workflows/neural-mechanism-shift.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: neural-mechanism-shift-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  red-green:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install CPU PyTorch
+        run: python -m pip install 'torch>=2.3,<3' --index-url https://download.pytorch.org/whl/cpu
+      - name: Install optional neural research dependencies
+        run: python -m pip install -e '.[test,neural-relations]'
+      - name: Test mutation separation, hidden world and posterior boundaries
+        run: python -m pytest -q tests/test_mechanism_shift.py tests/test_mechanism_shift_analysis.py tests/test_evolutionary_relations.py
+
+  experiment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        mechanism: [bilinear, threshold, two_branch, unchanged_control]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install CPU PyTorch
+        run: python -m pip install 'torch>=2.3,<3' --index-url https://download.pytorch.org/whl/cpu
+      - name: Install optional neural research dependencies
+        run: python -m pip install -e '.[test,neural-relations]'
+      - name: Matched optimizer and do(X) budgets
+        env:
+          LAW: ${{ matrix.mechanism }}
+        run: |
+          if [ "$LAW" = unchanged_control ]; then
+            seeds="0 1 2 3 4 5"
+            arms="retrain parameters structure mixed grid_geometry"
+          else
+            seeds="0 1 2 3 4 5 6 7 8 9 10 11"
+            arms="retrain parameters structure mixed grid_geometry structure_adaptive_eig"
+          fi
+          python -m ecsa.experimental.mechanism_shift \
+            --mechanisms "$LAW" --arms $arms --seeds $seeds \
+            --bootstrap 48 --steps 85 --interventions 24 \
+            --mutation-steps 18 --output "results/$LAW.json"
+      - name: Verify controlled comparisons
+        env:
+          LAW: ${{ matrix.mechanism }}
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          law=os.environ['LAW']
+          rows=json.loads(Path(f'results/{law}.json').read_text())['results']
+          seeds=6 if law=='unchanged_control' else 12
+          arms=5 if law=='unchanged_control' else 6
+          assert len(rows)==seeds*arms, (law,len(rows))
+          for seed in range(seeds):
+              subset=[row for row in rows if row['seed']==seed]
+              assert len(subset)==arms
+              assert len({row['initial_nll'] for row in subset})==1
+              assert all(row['world_interventions']==24 for row in subset)
+              assert all(row['gradient_steps']==162 for row in subset)
+              random=[row for row in subset if row['arm']!='structure_adaptive_eig']
+              control=[(t['x'],t['y']) for t in random[0]['trials']]
+              assert all([(t['x'],t['y']) for t in row['trials']]==control for row in random)
+              assert all(row['heldout_outside_grid']==subset[0]['heldout_outside_grid'] for row in subset)
+          print(f'PASSED: {law}: {len(rows)} runs, paired budgets and outcomes')
+          PY
+      - name: Preserve full trajectories and mutation lineage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shift-${{ matrix.mechanism }}-${{ github.sha }}
+          path: results/${{ matrix.mechanism }}.json
+          if-no-files-found: ignore
+
+  paired-analysis:
+    needs: [red-green, experiment]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install CPU PyTorch
+        run: python -m pip install 'torch>=2.3,<3' --index-url https://download.pytorch.org/whl/cpu
+      - name: Install report dependencies
+        run: python -m pip install -e '.[test,neural-relations]'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: shift-*-${{ github.sha }}
+          path: evaluation/
+          merge-multiple: true
+      - name: Seed-clustered paired bootstrap and stationary control
+        run: |
+          python -m ecsa.experimental.analyze_mechanism_shift \
+            evaluation/*.json --output evaluation/paired_analysis.json
+      - name: Preserve auditable full analysis
+        uses: actions/upload-artifact@v4
+        with:
+          name: shift-analysis-${{ github.sha }}
+          path: evaluation/paired_analysis.json
