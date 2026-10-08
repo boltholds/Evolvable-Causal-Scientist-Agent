@@ -106,6 +106,7 @@ jobs:
               group=[r for r in scores if r['arm']==arm and r['domain']=='counterfactual']
               print(arm,'mean counterfactual AUROC',sum(r['auroc'] for r in group)/len(group))
           print('MINILM TOKEN-STATE PROTOCOL VERIFIED:',len(scores))
+          print('FLAGGED LOW-SPREAD:', sum(not x['warmup_adequate_spread'] for x in scores))
           PY
       - uses: actions/upload-artifact@v4
         if: always()
@@ -160,6 +161,7 @@ jobs:
                   print(row['law'],row['arm'],round(row['auroc'],4),
                         'Brier',round(row['brier'],4))
           print('REAL QWEN TOKENS VERIFIED;',len(rows),'scores')
+          print('FLAGGED LOW-SPREAD:', sum(not x['warmup_adequate_spread'] for x in rows))
           PY
       - uses: actions/upload-artifact@v4
         if: always()

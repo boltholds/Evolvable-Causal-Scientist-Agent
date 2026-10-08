@@ -383,6 +383,7 @@ class FitAudit:
     final_spread: float
     encoder_version: int
     hypothesis_version: int
+    skipped_due_to_low_spread: bool = False
 
 
 def train_warmup(mode:StateArm,x:TensorStates,y:TensorStates,config:TokenFeedbackConfig,
@@ -392,6 +393,7 @@ def train_warmup(mode:StateArm,x:TensorStates,y:TensorStates,config:TokenFeedbac
     model=TokenKANSystem(mode,x.tokens.shape[-1])
     model.x_encoder.fit_warmup_normalizer(x)
     model.y_encoder.fit_warmup_normalizer(y)
+    original_state = copy.deepcopy(model.state_dict())
     optimizer=torch.optim.AdamW(model.parameters(),lr=config.warmup_lr)
     rng=np.random.default_rng(seed*1000+65)
     # Train-only constrained checkpoint selection prevents a catastrophic
@@ -399,7 +401,9 @@ def train_warmup(mode:StateArm,x:TensorStates,y:TensorStates,config:TokenFeedbac
     with torch.no_grad():
         initial_spread = model.min_spread(x,y)
         initial_score = float(_losses(model,x,y,1).mean())
-    best = copy.deepcopy(model.state_dict()) if initial_spread >= config.min_spread else None
+    required_spread = (1e-6 if mode is StateArm.NUMERIC_CONTROL
+                       else config.min_spread)
+    best = copy.deepcopy(model.state_dict()) if initial_spread >= required_spread else None
     best_score = initial_score if best is not None else float('inf')
     for step in range(config.warmup_steps):
         shift=int(rng.integers(1,len(x)))
@@ -413,13 +417,15 @@ def train_warmup(mode:StateArm,x:TensorStates,y:TensorStates,config:TokenFeedbac
             with torch.no_grad():
                 spread=model.min_spread(x,y)
                 score=float(_losses(model,x,y,1).mean())
-            if (np.isfinite(score) and spread>=config.min_spread
+            if (np.isfinite(score) and spread>=required_spread
                 and score < best_score):
                 best_score=score
                 best=copy.deepcopy(model.state_dict())
-    if best is None:
-        raise RuntimeError('bootstrap hypotheses collapsed before any valid checkpoint')
-    model.load_state_dict(best)
+    # An underidentified observation set is a research outcome, not a test
+    # framework error. Keep the initial hypothesis and explicitly flag it;
+    # subsequent KAN-to-encoder feedback is not admitted on this model.
+    model.warmup_adequate_spread = best is not None
+    model.load_state_dict(original_state if best is None else best)
     model.eval()
     return model
 
@@ -441,6 +447,10 @@ def fit_feedback(warmup:TokenKANSystem,x:TensorStates,y:TensorStates,
     before_spread=model.min_spread(cx,cy)
     head_only=mode is StateArm.ATTENTION_KAN_UPDATE
     encoder_only=mode is StateArm.ATTENTION_FEEDBACK
+    if not getattr(warmup, 'warmup_adequate_spread', True):
+        _allow_grad(model,heads=False,encoders=False)
+        return model,FitAudit(config.warmup_steps,0,0,0,0,0,
+                    before,before,before_spread,before_spread,0,0,True)
     if not (head_only or encoder_only):
         _allow_grad(model,heads=False,encoders=False)
         return model,FitAudit(config.warmup_steps,0,0,0,0,0,before,before,
@@ -551,6 +561,7 @@ class Score:
     max_input_tokens:int
     length_audited:int
     audit:FitAudit
+    warmup_adequate_spread: bool
 
 
 @torch.no_grad()
@@ -635,7 +646,8 @@ def benchmark_one(law:StudyLaw,seed:int,config:TokenFeedbackConfig,
                               adapt_end,config.calibration,config.heldout,overlap,
                               model_id,revision,port.dimension,nparameters,nattn,nheads,
                               getattr(port,'max_observed_length',0),
-                              getattr(port,'verified_length_count',0), audit))
+                              getattr(port,'verified_length_count',0), audit,
+                              bool(getattr(warm,'warmup_adequate_spread',True))))
     return tuple(rows)
 
 
@@ -687,6 +699,7 @@ def main() -> None:
              '64/1024-vs-full arms differ in trainable projection size; report counts.',
              'Numeric control uses the existing tanh-compressed generic numeric hash; not exact numerical measurements.',
              'No symbolic law extraction or agent-controlled intervention.',
+             'A low-variation warmup is explicitly flagged and feedback skipped, not assigned an invented valid posterior.',
           ]}
     payload=json.dumps(data,indent=2,ensure_ascii=False)
     if args.output:

@@ -274,3 +274,24 @@ def test_attention_retains_content_when_special_token_is_shared():
     model.fit_warmup_normalizer(states)
     projected=model(states).detach()
     assert float(projected.std(0,unbiased=False).mean()) > .02
+
+
+def test_genuinely_constant_observations_are_flagged_without_fake_learning():
+    """No observed variation must not be reported as successful KAN feedback."""
+    width=96
+    token=np.ones((12,3,width),dtype=np.float32)
+    observed=TokenStates(token,np.ones((12,3),dtype=bool),
+                         np.ones((12,width),dtype=np.float32))
+    samples=TensorStates.from_array(observed)
+    cfg=TokenFeedbackConfig(bootstrap=12,adaptation=8,calibration=8,
+                            heldout=9,warmup_steps=8,feedback_steps=4,
+                            checkpoint_every=2)
+    model=train_warmup(StateArm.TOKEN_ATTENTION,samples,samples,cfg,seed=0)
+    assert model.warmup_adequate_spread is False
+    updated,audit=fit_feedback(model,samples,samples,samples,samples,cfg,
+                               mode=StateArm.ATTENTION_FEEDBACK,seed=0)
+    assert audit.skipped_due_to_low_spread is True
+    assert audit.feedback_steps==audit.encoder_updates==0
+    assert audit.encoder_version==0
+    assert all(torch.equal(model.state_dict()[k],v)
+               for k,v in updated.state_dict().items() if k!='weights')
