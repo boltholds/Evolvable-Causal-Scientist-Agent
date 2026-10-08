@@ -26,6 +26,7 @@ from .token_state_relations import TokenStates
 
 class Candidate(StrEnum):
     BEHR_TEXTWORLD = "behr_textworld"
+    TEXTWORLD_SFT = "textworld_sft"
     BASE_QWEN25 = "base_qwen25"
     SMALL_QWEN25 = "small_qwen25"
     AGENTWORLD = "agentworld"
@@ -52,6 +53,12 @@ SPECS: dict[Candidate, ModelSpec] = {
         "Ricardo-H/BehR-WorldModel-Textworld-Qwen2.5-7B",
         "causal_hidden_states", "7B",
         "https://huggingface.co/Ricardo-H/BehR-WorldModel-Textworld-Qwen2.5-7B",
+    ),
+    Candidate.TEXTWORLD_SFT: ModelSpec(
+        Candidate.TEXTWORLD_SFT,
+        "X1AOX1A/WorldModel-Textworld-Qwen2.5-7B",
+        "causal_hidden_states", "7B",
+        "https://huggingface.co/X1AOX1A/WorldModel-Textworld-Qwen2.5-7B",
     ),
     Candidate.BASE_QWEN25: ModelSpec(
         Candidate.BASE_QWEN25, "Qwen/Qwen2.5-7B", "causal_hidden_states", "7B",
@@ -154,7 +161,7 @@ class FrozenCausalLMTokenPort:
         model_id = config.model_id or self.spec.model_id
         self.loaded_checkpoint_by_port = model is None
         if config.device == "cpu" and config.candidate in (
-            Candidate.BEHR_TEXTWORLD, Candidate.BASE_QWEN25,
+            Candidate.BEHR_TEXTWORLD, Candidate.TEXTWORLD_SFT, Candidate.BASE_QWEN25,
         ) and not config.allow_large_cpu and model is None:
             raise RuntimeError("7B CPU weight load blocked; use a GPU or explicit --allow-large-cpu")
         if config.device == "cuda" and not torch.cuda.is_available() and model is None:
