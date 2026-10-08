@@ -41,7 +41,7 @@ jobs:
           from ecsa.experimental.token_state_relations import TokenRelationConfig, benchmark_one, StateArm
           spec=spec_from_file_location('teststub','tests/test_token_state_relations.py')
           module=module_from_spec(spec);spec.loader.exec_module(module)
-          port=module.port()
+          port=module.FakePort()
           cfg=TokenRelationConfig(bootstrap=12,adaptation=8,calibration=8,
                  heldout=9,warmup_steps=10,extra_kan_steps=6,checkpoint_every=3)
           scores=[asdict(r) for law in (StudyLaw.PRECISION,StudyLaw.OPERATOR,StudyLaw.RANGE_SHIFT)
