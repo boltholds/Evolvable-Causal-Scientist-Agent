@@ -10,6 +10,7 @@ from ecsa.contracts import (
 )
 from ecsa.science import ScienceKernel
 
+from .affordances import ActiveAffordanceLearner
 from .candidate_generation import (
     ExperimentHistory,
     StructuralCandidateGenerator,
@@ -172,8 +173,10 @@ class ContractExperimentCoordinator:
         science: ScienceKernel | None = None,
         history: ExperimentHistory | None = None,
         candidates: StructuralCandidateGenerator | None = None,
+        affordances: ActiveAffordanceLearner | None = None,
     ) -> None:
         self.science = science or ScienceKernel()
+        self.affordances = affordances if affordances is not None else ActiveAffordanceLearner()
         self.history = history or ExperimentHistory()
         self.candidates = candidates or StructuralCandidateGenerator(
             history=self.history,
@@ -184,8 +187,10 @@ class ContractExperimentCoordinator:
         action: GroundAction,
         *,
         success: bool,
+        state_id: str | None = None,
     ) -> None:
         self.history.record(action, success=success)
+        self.affordances.observe(action, success=success, state_id=state_id)
 
     def select_bootstrap(
         self,
@@ -202,6 +207,8 @@ class ContractExperimentCoordinator:
                 -self.history.bootstrap_score(
                     experiment.action,
                 )[1],
+                -self.affordances.score(experiment.action)[0],
+                -self.affordances.score(experiment.action)[1],
                 experiment.action.schema_id,
                 experiment.experiment_id,
             ),
