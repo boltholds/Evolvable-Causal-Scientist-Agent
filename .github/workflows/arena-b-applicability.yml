@@ -1,0 +1,58 @@
+name: arena-b-applicability
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/arena-b-applicability.yml"
+      - "src/ecsa/world_model/**"
+      - "src/ecsa/autonomy/scientist.py"
+      - "src/ecsa/benchmarks/discoveryworld/arena_b.py"
+      - "src/ecsa/benchmarks/discoveryworld/paired_arena_b.py"
+  workflow_dispatch:
+
+concurrency:
+  group: arena-b-applicability-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  paired:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install -e '.[test,discoveryworld]'
+      - name: Paired Arena B evaluation
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+        run: |
+          python - <<'PY'
+          import json
+          from dataclasses import asdict
+          from pathlib import Path
+          from ecsa.benchmarks.discoveryworld.paired_arena_b import run_paired_arena_b
+
+          results = run_paired_arena_b(
+              seeds=(0, 1),
+              max_steps=36,
+              max_ground_actions=64,
+              output_dir=Path("arena-b-paired-results"),
+          )
+          report = [asdict(result) for result in results]
+          Path("arena-b-paired-results/summary.json").write_text(
+              json.dumps(report, indent=2, sort_keys=True) + "\n",
+          )
+          print("ARENA_B_PAIRED_JSON=" + json.dumps(report, sort_keys=True))
+          PY
+      - name: Preserve raw transitions and evaluation
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: arena-b-applicability-${{ github.sha }}
+          path: arena-b-paired-results/
+          if-no-files-found: ignore
