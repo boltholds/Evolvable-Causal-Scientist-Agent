@@ -229,3 +229,26 @@ def test_sentence_truncation_and_full_context_have_distinct_information_gates():
     probe=StateProjector(StateArm.TOKEN_ATTENTION,width)
     altered=TensorStates(token1,mask,torch.zeros_like(sentence))
     assert not torch.allclose(probe(altered)[0],probe(altered)[1])
+
+
+def test_warmup_only_whitening_rescues_clustered_full_embeddings():
+    """Regression: original projection collapsed Qwen full/token representations."""
+    n,d=16,96
+    base=np.linspace(-2.,2.,d,dtype=np.float32)
+    sentence=np.broadcast_to(base,(n,d)).copy()
+    rng=np.random.default_rng(101)
+    sentence += rng.normal(0,0.002,(n,d)).astype(np.float32)
+    sentence[:,72] += np.linspace(-.006,.006,n).astype(np.float32)
+    tensor=TokenStates(sentence[:,None,:].copy(),np.ones((n,1),dtype=bool),
+                       sentence.copy())
+    state=TensorStates.from_array(tensor)
+    torch.manual_seed(1)
+    model=StateProjector(StateArm.SENTENCE_FULL,d)
+    model.fit_warmup_normalizer(state)
+    projected=model(state)
+    assert float(projected.detach().std(0,unbiased=False).mean()) > .02
+    assert torch.all(model.warmup_scale>=.001)
+    center=model.warmup_center.detach().clone()
+    # A different evaluation distribution cannot change training moments.
+    model(state.shifted(1))
+    assert torch.equal(model.warmup_center,center)

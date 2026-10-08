@@ -253,9 +253,16 @@ class StateProjector(nn.Module):
                 StateArm.ATTENTION_FEEDBACK
             ) else None
         )
+        input_width = 64 if mode in (StateArm.SENTENCE_64, StateArm.NUMERIC_CONTROL) else width
+        # Observations can occupy a tiny region of Qwen's 1024-dimensional
+        # sphere. Per-sample layer normalization does not remove the shared
+        # direction and previously made all learned latents identical.
+        # These statistics are fitted on warmup observations ONLY.
+        self.register_buffer('warmup_center', torch.zeros(input_width))
+        self.register_buffer('warmup_scale', torch.ones(input_width))
         self.projection = nn.Sequential(
-            nn.Linear(64 if mode in (StateArm.SENTENCE_64, StateArm.NUMERIC_CONTROL) else width, 12),
-            nn.Tanh(), nn.Linear(12, 2), nn.Tanh(),
+            nn.Linear(input_width, 24), nn.Tanh(),
+            nn.Linear(24, 2), nn.Tanh(),
         )
 
     def weights(self, states: TensorStates) -> Tensor:
@@ -265,16 +272,32 @@ class StateProjector(nn.Module):
         logits = logits.masked_fill(~states.mask, torch.finfo(logits.dtype).min)
         return torch.softmax(logits,dim=1)
 
-    def forward(self, states: TensorStates) -> Tensor:
+    def _pooled(self, states: TensorStates) -> Tensor:
         if self.mode in (StateArm.SENTENCE_64, StateArm.NUMERIC_CONTROL):
-            vector = F.normalize(states.sentence[:,:64],dim=1)
-        elif self.mode is StateArm.SENTENCE_FULL:
-            vector = states.sentence
-        else:
-            attention = self.weights(states)
-            vector = torch.einsum("bt,btd->bd",attention,states.tokens)
-            vector = F.normalize(vector,dim=1)
-        vector = F.layer_norm(vector,(vector.shape[-1],))
+            return F.normalize(states.sentence[:,:64],dim=1)
+        if self.mode is StateArm.SENTENCE_FULL:
+            return states.sentence
+        attention = self.weights(states)
+        vector = torch.einsum("bt,btd->bd", attention, states.tokens)
+        return F.normalize(vector,dim=1)
+
+    @torch.no_grad()
+    def fit_warmup_normalizer(self, states: TensorStates) -> None:
+        if len(states) < 3:
+            raise ValueError('warmup normalization requires >=3 observations')
+        vec = self._pooled(states)
+        center = vec.mean(0)
+        stdev = vec.std(0, unbiased=False)
+        if not torch.isfinite(vec).all():
+            raise ValueError('nonfinite warmup representations')
+        # The floor protects near-constant coordinates from exploding, while
+        # the per-coordinate scale makes tiny numeric distinctions accessible.
+        self.warmup_center.copy_(center)
+        self.warmup_scale.copy_(stdev.clamp_min(0.001))
+
+    def forward(self, states: TensorStates) -> Tensor:
+        vector = (self._pooled(states) - self.warmup_center) / self.warmup_scale
+        vector = vector.clamp(-8.,8.)
         return self.projection(vector)
 
 
@@ -357,6 +380,8 @@ def train_warmup(mode:StateArm,x:TensorStates,y:TensorStates,config:TokenFeedbac
     torch.set_num_threads(1)
     torch.manual_seed(seed*1000+59)
     model=TokenKANSystem(mode,x.tokens.shape[-1])
+    model.x_encoder.fit_warmup_normalizer(x)
+    model.y_encoder.fit_warmup_normalizer(y)
     optimizer=torch.optim.AdamW(model.parameters(),lr=config.warmup_lr)
     rng=np.random.default_rng(seed*1000+65)
     for _ in range(config.warmup_steps):
@@ -629,6 +654,7 @@ def main() -> None:
              'Qwen frozen. Feedback changes only lightweight pooling and projections.',
              'Pair discriminator sigmoid is NOT calibrated p(Y|do(X)).',
              'Hypothesis weights from calibration are NOT Bayesian physical-law posterior.',
+             'Full and token states are standardized with warmup-only mean and per-feature variation.',
              '64/1024-vs-full arms differ in trainable projection size; report counts.',
              'Numeric control uses the existing tanh-compressed generic numeric hash; not exact numerical measurements.',
              'No symbolic law extraction or agent-controlled intervention.',

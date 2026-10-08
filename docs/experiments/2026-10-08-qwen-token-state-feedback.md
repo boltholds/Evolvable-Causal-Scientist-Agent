@@ -36,6 +36,7 @@ The feature input and projector parameter counts differ across 64 vs 1024 vs att
 - Evaluation identities are disjoint from training identities. Warmup, adaptation and checkpoint calibration are disjoint *contiguous subsets* of a synthetic dataset; held-out samples and counterfactual outcomes are created separately.
 - No benchmark hidden law or counterfactual outcomes are used in training or calibration.
 - The Qwen backbone is **frozen** throughout, and its token/sentence embeddings are cached by exact text. Model weights and tokenizer/revision are pinned for Qwen.
+- Each X/Y state projection is additionally centered and standardized **per coordinate using only bootstrap/warmup observations**, with a variance floor of 0.001. This corrects the Qwen and MiniLM collapse observed in the first CI run, where all full/pooled representations mapped to constant 2D latents (spread=0, AUROC=0.5). Warmup moments are frozen during feedback and validation; no heldout statistics enter normalization.
 - Padding is masked before computing any pool. The real-model tokenizer preflight checks full raw token lengths, raising on possible truncation. The maximum token length and number of verified texts are reported.
 - When feedback runs, KAN heads have `requires_grad=False` and the gradient flows from their relation score to X/Y attention weights and projections. The KAN-only control does the opposite.
 - Contrastive loss uses positive observed pairs and shifted observed Y as unlabeled negatives. This can introduce false negatives when several Y values are valid for the same X.
@@ -70,3 +71,7 @@ python -m ecsa.experimental.token_state_feedback \
 The GitHub workflow `neural-token-state.yml` runs offline contract tests, multi-seed MiniLM as a faster real transformer control, and an **actual frozen Qwen3-Embedding-0.6B** CPU experiment; results are available as immutable CI artifacts.
 
 If the attention-feedback arm underperforms the Qwen full-sentence / numeric baseline, the correct conclusion is that **this pooling/feedback training was insufficient**, not that contextual BPE token states lack the information in principle. If it improves, verify with additional seeds, shifts, failure modes and compute-matched baselines before any universality claim.
+
+## First CI diagnostic and correction
+
+The original commit `3a4980e` completed all jobs but exposed a projection failure: pretrained Qwen3/MiniLM `sentence_full`, `token_mean`, and `token_attention` produced zero latent spread, with AUROC exactly 0.5. This was a **training collapse** in the small high-dimensional projector, not a scientific negative result about retained BPE tokens. A subsequent version uses warmup-only per-coordinate centering and scale, increases the projection hidden width from 12 to 24 for all arms, and adds an explicit collapsed-feature regression test. Results from the two versions must not be pooled or compared as equivalent models.
