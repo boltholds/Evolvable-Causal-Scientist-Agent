@@ -1,0 +1,121 @@
+name: neural-verified-relation-kan
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/ecsa/experimental/verified_relation_kan.py'
+      - 'tests/test_verified_relation_kan.py'
+      - '.github/workflows/neural-verified-relation-kan.yml'
+      - 'docs/experiments/2026-10-08-verified-negatives-projection-ablation.md'
+  workflow_dispatch:
+
+concurrency:
+  group: neural-verified-relation-kan-\${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verified-negative-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install CPU PyTorch
+        run: pip install 'torch>=2.3,<3' --index-url https://download.pytorch.org/whl/cpu
+      - name: Install tests and neural packages
+        run: pip install -e '.[test,neural-relations]'
+      - name: Run reproducible verified-negative, PCA and KAN-only tests
+        run: |
+          python -m pytest -q \
+            tests/test_verified_relation_kan.py \
+            tests/test_world_model_encoders.py \
+            tests/test_token_state_relations.py
+      - name: Strict gates
+        run: |
+          python - <<'PY'
+          from ecsa.experimental.verified_relation_kan import (
+              ReplayWitness, mine_repeat_supported_pairs,
+          )
+          records = tuple(
+              ReplayWitness(str(i), 'epoch', 'same-action', f'x{i}',
+                            (label,label,label), True)
+              for i,label in enumerate(('yes','yes','no','no'))
+          )
+          result=mine_repeat_supported_pairs(records,seed=0)
+          assert result.audit.validated_pairs==4
+          assert result.audit.shuffled_false_negative_fraction==.5
+          assert all(row.y_true!=row.y_alternative for row in result.samples)
+          print('REPLAY-SUPPORTED NEGATIVES VERIFIED: 0 labeled collisions, 50% naive roll collisions')
+          PY
+
+  frozen-qwen25-small-cpu:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    env:
+      TOKENIZERS_PARALLELISM: 'false'
+      OMP_NUM_THREADS: '3'
+      MKL_NUM_THREADS: '3'
+      HF_HUB_DISABLE_XET: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install CPU torch
+        run: pip install 'torch>=2.3,<3' --index-url https://download.pytorch.org/whl/cpu
+      - name: Install real model dependencies
+        run: pip install -e '.[test,pretrained-encoder]'
+      - name: Train KAN with witnessed pairs and full 2/8/16/32 projections
+        run: |
+          python -m ecsa.experimental.verified_relation_kan \
+            --candidate small_qwen25 --device cpu \
+            --laws precision operator --seeds 0 \
+            --pool sentence_full token_mean \
+            --projection random train_only_pca \
+            --dimensions 2 8 16 32 \
+            --train 24 --calibration 12 --heldout 12 \
+            --replays 3 --steps 35 --max-length 1024 \
+            --output results/small_qwen_verified.json \
+            | tee results_summary.json
+      - name: Audit fixed cohort, multiple widths, no encoder OOC
+        run: |
+          python - <<'PY'
+          import json
+          from collections import defaultdict
+          data=json.load(open('results/small_qwen_verified.json'))
+          assert data['model']=='Qwen/Qwen2.5-0.5B'
+          assert data['no_kan_to_encoder_gradient'] is True
+          assert data['no_oracle_label_in_negative_miner'] is True
+          assert data['replays_are_deterministic_fixture_only'] is True
+          rows=data['rows']
+          assert len(rows)==2*2*2*4, len(rows)
+          grouped=defaultdict(list)
+          for row in rows:
+              assert row['identity_overlap']==0
+              assert row['train_pairs']>0 and row['calibration_pairs']>0
+              assert row['heldout_pairs']>0
+              assert 0<=row['heldout_auroc']<=1
+              grouped[(row['law'],row['pool'],row['dimension'])].append(row)
+          assert all(len(group)==2 and len({r['kan_parameters'] for r in group})==1
+                     for group in grouped.values())
+          for law in ('precision','operator'):
+              candidates=[r for r in rows if r['law']==law]
+              print(law,'pairs',candidates[0]['train_pairs'],
+                    'shuffled_false_negative_fraction',
+                    candidates[0]['train_shuffled_false_negative_fraction'])
+              print('auroc by method',[(r['projection'],r['dimension'],
+                       round(r['heldout_auroc'],4)) for r in candidates
+                       if r['pool']=='sentence_full'])
+          print('ACTUAL 0.5B QWEN VERIFIED; BehR-7B NOT RUN')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: verified-relations-small-qwen-\${{ github.sha }}
+          path: |
+            results/
+            results_summary.json
+          if-no-files-found: ignore
