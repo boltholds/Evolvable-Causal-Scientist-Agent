@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from collections import Counter
-from itertools import product
+from itertools import chain, islice, product
+from math import prod
 
 from .contracts import (
     FrozenRawValue,
@@ -174,11 +175,19 @@ class StructuralCandidateGenerator:
                 candidate_sets.append(values)
             if not viable:
                 continue
-            combinations = (
-                iter(product(*candidate_sets))
-                if candidate_sets
-                else iter(((),))
-            )
+            if candidate_sets:
+                total = prod(len(values) for values in candidate_sets)
+                offset = (
+                    self.history.schema_attempts(
+                        schema.schema_id, len(schema.parameters)
+                    ) % total
+                )
+                combinations = chain(
+                    islice(product(*candidate_sets), offset, None),
+                    islice(product(*candidate_sets), offset),
+                )
+            else:
+                combinations = iter(((),))
             iterators.append((schema, combinations))
 
         actions: list[GroundAction] = []
