@@ -13,6 +13,7 @@ from ecsa.science import ScienceKernel
 
 from .affordances import ActiveAffordanceLearner
 from .applicability import ActiveApplicabilityLearner
+from .lifted_applicability import LiftedApplicabilityLearner
 from .preconditions import observable_conditions
 from .preconditions import ActivePreconditionLearner
 from .candidate_generation import (
@@ -32,6 +33,7 @@ class ExperimentSelectionMode(StrEnum):
     STRUCTURAL = "structural"
     WORLD_CONTRACT_EIG = "world_contract_eig"
     APPLICABILITY_EIG = "applicability_eig"
+    LIFTED_APPLICABILITY_EIG = "lifted_applicability_eig"
 
 
 @dataclass(frozen=True)
@@ -186,13 +188,23 @@ class ContractExperimentCoordinator:
         affordances: ActiveAffordanceLearner | None = None,
         preconditions: ActivePreconditionLearner | None = None,
         applicability: ActiveApplicabilityLearner | None = None,
+        lifted_applicability: LiftedApplicabilityLearner | None = None,
         use_affordance_scoring: bool = True,
         use_applicability_selection: bool = True,
+        use_lifted_selection: bool = True,
     ) -> None:
         if type(use_affordance_scoring) is not bool:
             raise TypeError("use_affordance_scoring must be bool")
         if type(use_applicability_selection) is not bool:
             raise TypeError("use_applicability_selection must be bool")
+        if type(use_lifted_selection) is not bool:
+            raise TypeError("use_lifted_selection must be bool")
+        self.use_lifted_selection = use_lifted_selection
+        self.lifted_applicability = (
+            lifted_applicability
+            if lifted_applicability is not None
+            else LiftedApplicabilityLearner()
+        )
         self.use_affordance_scoring = use_affordance_scoring
         self.use_applicability_selection = use_applicability_selection
         self.last_selection_mode = ExperimentSelectionMode.STRUCTURAL
@@ -223,6 +235,7 @@ class ContractExperimentCoordinator:
         if before is not None:
             self.preconditions.observe(action, success=success, before=before)
             self.applicability.observe(action, success=success, before=before)
+            self.lifted_applicability.observe(action, success=success, before=before)
 
     def select_bootstrap(
         self,
@@ -306,53 +319,77 @@ class ContractExperimentCoordinator:
         experiments: tuple[ContractExperiment, ...],
         min_information_gain_bits: float = 1e-9,
     ) -> ContractExperiment:
-        """Use ScienceKernel on competing applicability rules, else explore."""
+        """Select active tests over alternative applicability mechanisms.
+
+        Contract EIG is handled by select_active first. Within applicability,
+        lifted rules are preferred once cross-object evidence admits them:
+        entropy measured over distinct hypothesis spaces is not directly
+        comparable. Positive EIG beats structural novelty; equal positive
+        EIG values remain informative and use novelty as a tie-breaker.
+        """
         if not experiments:
             raise ValueError("at least one contract experiment is required")
         if not isinstance(perception, PerceptualObservation):
             raise TypeError("perception must be PerceptualObservation")
+        if (
+            not isinstance(min_information_gain_bits, (float, int))
+            or isinstance(min_information_gain_bits, bool)
+            or not isfinite(float(min_information_gain_bits))
+            or float(min_information_gain_bits) < 0.0
+        ):
+            raise ValueError("min_information_gain_bits must be finite and nonnegative")
         if not self.use_applicability_selection:
             return self.select_bootstrap(experiments)
-        groups: dict[tuple[str, int], list[tuple[float, ContractExperiment]]] = {}
+
+        groups: dict[tuple[str, int], list[ContractExperiment]] = {}
         for experiment in experiments:
             action = experiment.action
-            signature = (action.schema_id, len(action.arguments))
-            belief = self.applicability.belief(*signature)
-            if belief is None:
-                continue
-            predictions = self.applicability.predictions(
-                belief,
-                experiment_id=experiment.experiment_id,
-                action=action,
-                before=perception,
+            groups.setdefault((action.schema_id, len(action.arguments)), []).append(
+                experiment
             )
-            score = self.science.score_experiment(belief.posterior, predictions)
-            groups.setdefault(signature, []).append((score.information_gain_bits, experiment))
 
-        # An equal information score for every grounding provides no active
-        # ordering signal. Preserve the structural exploration fallback.
-        informative: list[tuple[float, ContractExperiment]] = []
-        for scored in groups.values():
-            values = tuple(score for score, _ in scored)
-            if len(values) < 2 or max(values) - min(values) <= min_information_gain_bits:
+        for backend in ("lifted", "grounded"):
+            if backend == "lifted" and not self.use_lifted_selection:
                 continue
-            informative.extend(
-                (score, experiment)
-                for score, experiment in scored
-                if score > min_information_gain_bits
-            )
-        if not informative:
-            return self.select_bootstrap(experiments)
-        self.last_selection_mode = ExperimentSelectionMode.APPLICABILITY_EIG
-        return min(
-            informative,
-            key=lambda item: (
-                -item[0],
-                -self.history.bootstrap_score(item[1].action)[0],
-                -self.history.bootstrap_score(item[1].action)[1],
-                item[1].experiment_id,
-            ),
-        )[1]
+            candidates: list[tuple[float, ContractExperiment]] = []
+            for signature, group in groups.items():
+                if backend == "lifted":
+                    belief = self.lifted_applicability.belief(*signature)
+                    learner = self.lifted_applicability
+                else:
+                    belief = self.applicability.belief(*signature)
+                    learner = self.applicability
+                if belief is None:
+                    continue
+                for experiment in group:
+                    predictions = learner.predictions(
+                        belief,
+                        experiment_id=experiment.experiment_id,
+                        action=experiment.action,
+                        before=perception,
+                    )
+                    gain = self.science.score_experiment(
+                        belief.posterior, predictions,
+                    ).information_gain_bits
+                    if gain > min_information_gain_bits:
+                        candidates.append((gain, experiment))
+
+            if candidates:
+                self.last_selection_mode = (
+                    ExperimentSelectionMode.LIFTED_APPLICABILITY_EIG
+                    if backend == "lifted"
+                    else ExperimentSelectionMode.APPLICABILITY_EIG
+                )
+                return min(
+                    candidates,
+                    key=lambda item: (
+                        -item[0],
+                        -self.history.bootstrap_score(item[1].action)[0],
+                        -self.history.bootstrap_score(item[1].action)[1],
+                        item[1].experiment_id,
+                    ),
+                )[1]
+        return self.select_bootstrap(experiments)
 
     def select_active(
         self,
