@@ -1,0 +1,137 @@
+name: neural-feedback-encoder
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/ecsa/experimental/feedback_encoder.py'
+      - 'tests/test_feedback_encoder.py'
+      - '.github/workflows/neural-feedback-encoder.yml'
+      - 'docs/experiments/2026-10-08-hypothesis-encoder-feedback.md'
+  workflow_dispatch:
+
+concurrency:
+  group: neural-feedback-encoder-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install CPU PyTorch
+        run: python -m pip install 'torch>=2.3,<3' --index-url https://download.pytorch.org/whl/cpu
+      - name: Install optional neural tests
+        run: python -m pip install -e '.[test,neural-relations]'
+      - name: Test gradient flow, posterior versioning and no test-set leakage
+        run: python -m pytest -q tests/test_feedback_encoder.py tests/test_pretrained_text_study.py
+
+  minilm-feedback-cpu:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      TOKENIZERS_PARALLELISM: 'false'
+      OMP_NUM_THREADS: '4'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install CPU PyTorch
+        run: python -m pip install 'torch>=2.3,<3' --index-url https://download.pytorch.org/whl/cpu
+      - name: Install pretrained embeddings
+        run: python -m pip install -e '.[test,pretrained-encoder]'
+      - name: Evaluate all feedback modes on three hidden laws
+        run: |
+          python -m ecsa.experimental.feedback_encoder \
+            --model sentence-transformers/all-MiniLM-L6-v2 \
+            --laws categorical numeric interaction --seeds 0 1 2 \
+            --bootstrap 48 --adaptation 32 --calibration 16 --heldout 32 \
+            --dimension 64 --warmup-steps 65 --feedback-steps 40 \
+            --max-seq-length 160 --device cpu \
+            --output results/feedback_minilm.json | tee minilm-summary.json
+      - name: Verify matched cohorts and frozen encoder
+        run: |
+          python - <<'PY'
+          import json
+          from collections import defaultdict
+          data=json.load(open('results/feedback_minilm.json'))
+          groups=defaultdict(list)
+          for result in data['results']:
+              assert result['identity_overlap']==0
+              assert result['bootstrap']==48 and result['adaptation']==32
+              assert result['calibration']==16 and result['heldout']==32
+              assert abs(sum(result['hypothesis_weights'])-1.) < 1e-5
+              groups[(result['law'],result['seed'],result['domain'])].append(result)
+              if result['mode']=='frozen':
+                  assert result['optimizer_steps']==0
+              else:
+                  assert result['optimizer_steps']==40
+                  if result['mode']=='kan_only':
+                      assert result['adapter_version']==0
+                  if result['mode']=='adapter_only':
+                      assert result['hypothesis_version']==0
+          for key,group in groups.items():
+              assert {r['mode'] for r in group} == {'frozen','kan_only','adapter_only','alternating'},key
+              assert len({r['init_auc'] for r in group})==1,key
+          print('VERIFIED:',len(data['results']),'individual scores; 3 laws x 3 seeds; heldout excluded from updates')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hypothesis-feedback-minilm-${{ github.sha }}
+          path: |
+            results/
+            minilm-summary.json
+          if-no-files-found: ignore
+
+  qwen-feedback-cpu:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      TOKENIZERS_PARALLELISM: 'false'
+      OMP_NUM_THREADS: '4'
+      HF_HUB_DISABLE_XET: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install CPU PyTorch
+        run: python -m pip install 'torch>=2.3,<3' --index-url https://download.pytorch.org/whl/cpu
+      - name: Install pretrained embedding dependencies
+        run: python -m pip install -e '.[test,pretrained-encoder]'
+      - name: Qwen3 actual frozen-backbone feedback study
+        run: |
+          python -m ecsa.experimental.feedback_encoder \
+            --model Qwen/Qwen3-Embedding-0.6B \
+            --revision 3d106eabb5535a84de3ae88f45887a78259b52de \
+            --laws interaction --seeds 0 \
+            --bootstrap 24 --adaptation 16 --calibration 12 --heldout 24 \
+            --dimension 64 --warmup-steps 65 --feedback-steps 40 \
+            --max-seq-length 96 --batch-size 4 --device cpu \
+            --output results/feedback_qwen.json | tee qwen-summary.json
+      - name: Check real Qwen adaptation is not an unverified stub
+        run: |
+          python - <<'PY'
+          import json
+          d=json.load(open('results/feedback_qwen.json'))
+          assert len(d['results'])==16
+          assert d['model']=='Qwen/Qwen3-Embedding-0.6B'
+          assert d['revision']=='3d106eabb5535a84de3ae88f45887a78259b52de'
+          assert {r['mode'] for r in d['results']}=={'frozen','kan_only','adapter_only','alternating'}
+          assert all(r['identity_overlap']==0 for r in d['results'])
+          for r in d['results']:
+              print(r['mode'],r['domain'],round(r['auroc'],4),round(r['brier'],4))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hypothesis-feedback-qwen-${{ github.sha }}
+          path: |
+            results/
+            qwen-summary.json
+          if-no-files-found: ignore
