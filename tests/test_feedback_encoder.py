@@ -5,7 +5,8 @@ from dataclasses import replace
 
 import numpy as np
 import pytest
-import torch
+
+torch = pytest.importorskip("torch")
 
 from ecsa.experimental.feedback_encoder import (
     FeedbackConfig,
