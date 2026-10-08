@@ -95,11 +95,12 @@ class AutonomousScientist:
             raise TypeError(
                 "transition must be InteractionTransition"
             )
+        before = self.perception.perceive(transition.before)
         self.experiments.record_outcome(
             transition.action,
             success=transition.outcome.success,
+            before=before,
         )
-        before = self.perception.perceive(transition.before)
         after = self.perception.perceive(transition.after)
         grounding = self._grounder.observe(
             transition,

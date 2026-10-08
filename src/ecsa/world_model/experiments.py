@@ -11,6 +11,7 @@ from ecsa.contracts import (
 from ecsa.science import ScienceKernel
 
 from .affordances import ActiveAffordanceLearner
+from .preconditions import ActivePreconditionLearner
 from .candidate_generation import (
     ExperimentHistory,
     StructuralCandidateGenerator,
@@ -174,9 +175,11 @@ class ContractExperimentCoordinator:
         history: ExperimentHistory | None = None,
         candidates: StructuralCandidateGenerator | None = None,
         affordances: ActiveAffordanceLearner | None = None,
+        preconditions: ActivePreconditionLearner | None = None,
     ) -> None:
         self.science = science or ScienceKernel()
         self.affordances = affordances if affordances is not None else ActiveAffordanceLearner()
+        self.preconditions = preconditions if preconditions is not None else ActivePreconditionLearner()
         self.history = history or ExperimentHistory()
         self.candidates = candidates or StructuralCandidateGenerator(
             history=self.history,
@@ -188,9 +191,12 @@ class ContractExperimentCoordinator:
         *,
         success: bool,
         state_id: str | None = None,
+        before: PerceptualObservation | None = None,
     ) -> None:
         self.history.record(action, success=success)
         self.affordances.observe(action, success=success, state_id=state_id)
+        if before is not None:
+            self.preconditions.observe(action, success=success, before=before)
 
     def select_bootstrap(
         self,
