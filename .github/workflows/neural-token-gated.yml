@@ -1,0 +1,143 @@
+name: neural-token-gated
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/ecsa/experimental/token_state_feedback.py'
+      - 'tests/test_token_state_feedback.py'
+      - '.github/workflows/neural-token-gated.yml'
+      - 'docs/experiments/2026-10-08-gated-token-pooling.md'
+  workflow_dispatch:
+
+concurrency:
+  group: neural-token-gated-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  offline-gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install CPU Torch
+        run: pip install 'torch>=2.3,<3' --index-url https://download.pytorch.org/whl/cpu
+      - name: Install optional tests
+        run: pip install -e '.[test,neural-relations]'
+      - name: Prove matched initial KAN, masks and adapter-only gradient
+        run: python -m pytest -q tests/test_token_state_feedback.py tests/test_feedback_encoder.py
+
+  minilm-gated-cpu:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      TOKENIZERS_PARALLELISM: 'false'
+      OMP_NUM_THREADS: '3'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install CPU Torch
+        run: pip install 'torch>=2.3,<3' --index-url https://download.pytorch.org/whl/cpu
+      - name: Install encoder dependencies
+        run: pip install -e '.[test,pretrained-encoder]'
+      - name: Compare original and gated pooling across new seeds
+        run: |
+          python -m ecsa.experimental.token_state_feedback \
+            --model sentence-transformers/all-MiniLM-L6-v2 \
+            --laws precision operator range_shift sign --seeds 3 4 5 \
+            --arms sentence_64 sentence_full token_mean token_attention \
+                   gated_attention gated_kan_update gated_feedback numeric_control \
+            --bootstrap 24 --adaptation 16 --calibration 12 --heldout 24 \
+            --warmup-steps 45 --feedback-steps 24 --max-seq-length 256 \
+            --device cpu --output results/minilm_gated.json | tee minilm-summary.json
+      - name: Verify complete paired dataset and report without success assertion
+        run: |
+          python - <<'PY'
+          import json
+          from collections import defaultdict
+          d=json.load(open('results/minilm_gated.json'))
+          rows=d['scores']
+          assert len(rows)==4*3*8*3, len(rows)
+          groups=defaultdict(list)
+          for r in rows:
+              assert r['identity_overlap']==0
+              assert (r['train_pairs'],r['validation_pairs'],r['heldout_pairs'])==(40,12,24)
+              groups[(r['law'],r['seed'],r['domain'])].append(r)
+          assert all(len(group)==8 and len({r['head_parameters'] for r in group})==1
+                     for group in groups.values())
+          for arm in sorted({r['arm'] for r in rows}):
+              group=[r for r in rows if r['arm']==arm and r['domain']=='counterfactual']
+              print(arm, 'mean heldout AUROC',round(sum(r['auroc'] for r in group)/len(group),4))
+          print('PRE-SPECIFIED GATED ATTENTION ABLATION COMPLETED')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gated-token-minilm-${{ github.sha }}
+          path: |
+            results/minilm_gated.json
+            minilm-summary.json
+          if-no-files-found: ignore
+
+  qwen-gated-cpu:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    env:
+      TOKENIZERS_PARALLELISM: 'false'
+      OMP_NUM_THREADS: '3'
+      HF_HUB_DISABLE_XET: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install CPU Torch
+        run: pip install 'torch>=2.3,<3' --index-url https://download.pytorch.org/whl/cpu
+      - name: Install frozen Qwen dependencies
+        run: pip install -e '.[test,pretrained-encoder]'
+      - name: Real Qwen full token states versus gated KAN feedback
+        run: |
+          python -m ecsa.experimental.token_state_feedback \
+            --model Qwen/Qwen3-Embedding-0.6B \
+            --revision 3d106eabb5535a84de3ae88f45887a78259b52de \
+            --laws precision operator range_shift sign --seeds 1 \
+            --arms sentence_64 sentence_full token_mean token_attention \
+                   gated_attention gated_kan_update gated_feedback numeric_control \
+            --bootstrap 24 --adaptation 12 --calibration 8 --heldout 16 \
+            --warmup-steps 45 --feedback-steps 24 --max-seq-length 256 \
+            --device cpu --output results/qwen_gated.json | tee qwen-summary.json
+      - name: Check actual Qwen and compare within each law
+        run: |
+          python - <<'PY'
+          import json
+          from collections import defaultdict
+          d=json.load(open('results/qwen_gated.json'))
+          assert d['model']=='Qwen/Qwen3-Embedding-0.6B'
+          assert d['revision']=='3d106eabb5535a84de3ae88f45887a78259b52de'
+          assert d['max_seen_length']<=256 and d['backbone_forward_batches']>0
+          rows=d['scores'];assert len(rows)==4*1*8*3,len(rows)
+          groups=defaultdict(list)
+          for r in rows:
+              assert r['identity_overlap']==0 and r['model_width']==1024
+              groups[(r['law'],r['seed'],r['domain'])].append(r)
+          assert all(len(g)==8 and len({r['head_parameters'] for r in g})==1 for g in groups.values())
+          for law in ('precision','operator','range_shift','sign'):
+              print(law)
+              for r in rows:
+                  if r['law']==law and r['domain']=='counterfactual':
+                      print(' ',r['arm'],'AUROC',round(r['auroc'],4),'spread_ok',r['warmup_adequate_spread'])
+          print('REAL FROZEN QWEN GATED-Attention ABLATION COMPLETED')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gated-token-qwen-${{ github.sha }}
+          path: |
+            results/qwen_gated.json
+            qwen-summary.json
+          if-no-files-found: ignore

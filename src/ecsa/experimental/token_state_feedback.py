@@ -41,6 +41,19 @@ class StateArm(StrEnum):
     TOKEN_ATTENTION = "token_attention"
     ATTENTION_KAN_UPDATE = "attention_kan_update"
     ATTENTION_FEEDBACK = "attention_feedback"
+    GATED_ATTENTION = "gated_attention"
+    GATED_KAN_UPDATE = "gated_kan_update"
+    GATED_FEEDBACK = "gated_feedback"
+
+
+# The published seven-way ablation must remain reproducible when no additional
+# arms are requested. New residual-attention arms are an opt-in follow-up.
+DEFAULT_ARMS = (
+    StateArm.SENTENCE_64, StateArm.NUMERIC_CONTROL,
+    StateArm.SENTENCE_FULL, StateArm.TOKEN_MEAN,
+    StateArm.TOKEN_ATTENTION, StateArm.ATTENTION_KAN_UPDATE,
+    StateArm.ATTENTION_FEEDBACK,
+)
 
 
 class EvaluationDomain(StrEnum):
@@ -253,6 +266,7 @@ class StateProjector(nn.Module):
                 StateArm.ATTENTION_FEEDBACK
             ) else None
         )
+        self.residual_attention_gate = None
         input_width = 64 if mode in (StateArm.SENTENCE_64, StateArm.NUMERIC_CONTROL) else width
         # Observations can occupy a tiny region of Qwen's 1024-dimensional
         # sphere. Per-sample layer normalization does not remove the shared
@@ -264,6 +278,19 @@ class StateProjector(nn.Module):
             nn.Linear(input_width, 24), nn.Tanh(),
             nn.Linear(24, 2), nn.Tanh(),
         )
+        if mode in (
+            StateArm.GATED_ATTENTION, StateArm.GATED_KAN_UPDATE,
+            StateArm.GATED_FEEDBACK,
+        ):
+            # Preserve the exact initial projection/head RNG state of the
+            # token_mean baseline. A separately initialized attention branch
+            # must not accidentally change the KAN control initialization.
+            rng_state = torch.random.get_rng_state()
+            self.token_attention = nn.Linear(width, 1, bias=False)
+            torch.random.set_rng_state(rng_state)
+            # Start almost exactly at masked mean; bounded learned residual
+            # can refine it but never replace the whole representation.
+            self.residual_attention_gate = nn.Parameter(torch.tensor(-5.0))
 
     def weights(self, states: TensorStates) -> Tensor:
         if self.token_attention is None:
@@ -288,7 +315,11 @@ class StateProjector(nn.Module):
             return F.normalize(pooled_mean,dim=1)
         attention = self.weights(states)
         attended = torch.einsum("bt,btd->bd",attention,states.tokens)
-        vector = 0.65 * pooled_mean + 0.35 * attended
+        if self.residual_attention_gate is None:
+            vector = 0.65 * pooled_mean + 0.35 * attended
+        else:
+            gate = torch.sigmoid(self.residual_attention_gate) * 0.5
+            vector = pooled_mean + gate * (attended - pooled_mean)
         return F.normalize(vector,dim=1)
 
     @torch.no_grad()
@@ -445,8 +476,8 @@ def fit_feedback(warmup:TokenKANSystem,x:TensorStates,y:TensorStates,
     _refresh_weights(model,cx,cy)
     before=_calibration_loss(model,cx,cy)
     before_spread=model.min_spread(cx,cy)
-    head_only=mode is StateArm.ATTENTION_KAN_UPDATE
-    encoder_only=mode is StateArm.ATTENTION_FEEDBACK
+    head_only=mode in (StateArm.ATTENTION_KAN_UPDATE, StateArm.GATED_KAN_UPDATE)
+    encoder_only=mode in (StateArm.ATTENTION_FEEDBACK, StateArm.GATED_FEEDBACK)
     if not getattr(warmup, 'warmup_adequate_spread', True):
         _allow_grad(model,heads=False,encoders=False)
         return model,FitAudit(config.warmup_steps,0,0,0,0,0,
@@ -455,7 +486,7 @@ def fit_feedback(warmup:TokenKANSystem,x:TensorStates,y:TensorStates,
         _allow_grad(model,heads=False,encoders=False)
         return model,FitAudit(config.warmup_steps,0,0,0,0,0,before,before,
                               before_spread,before_spread,0,0)
-    if warmup.x_encoder.mode is not StateArm.TOKEN_ATTENTION:
+    if warmup.x_encoder.mode not in (StateArm.TOKEN_ATTENTION, StateArm.GATED_ATTENTION):
         raise ValueError("feedback controls require attention-pool warmup")
     _allow_grad(model,heads=head_only,encoders=encoder_only)
     params=[p for p in model.parameters() if p.requires_grad]
@@ -576,7 +607,7 @@ def evaluate_pair_scores(model:TokenKANSystem, x:TensorStates,y:TensorStates,
 
 def benchmark_one(law:StudyLaw,seed:int,config:TokenFeedbackConfig,
                   port:TokenStatePort,*,model_id:str,revision:str | None,
-                  arms:tuple[StateArm,...]=tuple(StateArm)) -> tuple[Score,...]:
+                   arms:tuple[StateArm,...]=DEFAULT_ARMS) -> tuple[Score,...]:
     if not isinstance(law,StudyLaw) or not all(isinstance(x,StateArm) for x in arms):
         raise TypeError("typed law and arms required")
     total=config.bootstrap+config.adaptation+config.calibration
@@ -612,6 +643,7 @@ def benchmark_one(law:StudyLaw,seed:int,config:TokenFeedbackConfig,
     trainx,trainy=xx.take(0,adapt_end), yy.take(0,adapt_end)
     calx,caly=xx.take(adapt_end,total), yy.take(adapt_end,total)
     attn_warmup=None
+    gated_warmup=None
     rows=[]
     numeric_eval=(
         (EvaluationDomain.COUNTERFACTUAL, *_numeric_batch(heldout,port.dimension),
@@ -628,10 +660,16 @@ def benchmark_one(law:StudyLaw,seed:int,config:TokenFeedbackConfig,
             if attn_warmup is None:
                 attn_warmup=train_warmup(StateArm.TOKEN_ATTENTION,warmx,warmy,config,seed)
             warm=attn_warmup
+        elif arm in (StateArm.GATED_KAN_UPDATE, StateArm.GATED_FEEDBACK):
+            if gated_warmup is None:
+                gated_warmup=train_warmup(StateArm.GATED_ATTENTION,warmx,warmy,config,seed)
+            warm=gated_warmup
         else:
             warm=train_warmup(arm,arm_x.take(0,config.bootstrap),arm_y.take(0,config.bootstrap),config,seed)
             if arm is StateArm.TOKEN_ATTENTION:
                 attn_warmup=warm
+            if arm is StateArm.GATED_ATTENTION:
+                gated_warmup=warm
         trained,audit=fit_feedback(warm,
             arm_x.take(0,adapt_end),arm_y.take(0,adapt_end),
             arm_x.take(adapt_end,total),arm_y.take(adapt_end,total),
@@ -653,10 +691,11 @@ def benchmark_one(law:StudyLaw,seed:int,config:TokenFeedbackConfig,
 
 def run_benchmark(*, port:TokenStatePort, config:TokenFeedbackConfig,
                   laws:tuple[StudyLaw,...],seeds:tuple[int,...],
-                  model_id:str,revision:str | None) -> tuple[Score,...]:
+                  model_id:str,revision:str | None,
+                  arms:tuple[StateArm,...]=DEFAULT_ARMS) -> tuple[Score,...]:
     return tuple(result for law in laws for seed in seeds
                  for result in benchmark_one(law,seed,config,port,
-                                             model_id=model_id,revision=revision))
+                                             model_id=model_id,revision=revision,arms=arms))
 
 
 def main() -> None:
@@ -665,6 +704,8 @@ def main() -> None:
     parser.add_argument('--revision',default='')
     parser.add_argument('--laws',nargs='+',choices=[x.value for x in StudyLaw],
                         default=[StudyLaw.PRECISION.value,StudyLaw.OPERATOR.value])
+    parser.add_argument('--arms',nargs='+',choices=[x.value for x in StateArm],
+                        default=[x.value for x in DEFAULT_ARMS])
     parser.add_argument('--seeds',nargs='+',type=int,default=[0])
     parser.add_argument('--bootstrap',type=int,default=24)
     parser.add_argument('--adaptation',type=int,default=16)
@@ -684,8 +725,12 @@ def main() -> None:
     port=SentenceTransformerTokenPort(args.model,revision=revision,
                                        device=args.device,max_seq_length=args.max_seq_length,
                                        batch_size=args.batch_size)
+    arms=tuple(StateArm(a) for a in args.arms)
+    if len(set(arms))!=len(arms):
+        raise ValueError('repeated experiment arms are not permitted')
     result=run_benchmark(port=port,config=config,laws=tuple(StudyLaw(x) for x in args.laws),
-                         seeds=tuple(args.seeds),model_id=args.model,revision=revision)
+                         seeds=tuple(args.seeds),model_id=args.model,revision=revision,
+                         arms=arms)
     data={'model':args.model,'revision':revision,'config':asdict(config),
           'max_seen_length':port.max_observed_length,
           'audited_texts':port.verified_length_count,'backbone_forward_batches':port.forward_calls,
@@ -711,7 +756,7 @@ def main() -> None:
                       'mean_auroc':{
                           arm.value:float(np.mean([r.auroc for r in result
                                   if r.arm is arm and r.domain is EvaluationDomain.COUNTERFACTUAL]))
-                          for arm in StateArm},
+                          for arm in arms},
                       },indent=2))
 
 

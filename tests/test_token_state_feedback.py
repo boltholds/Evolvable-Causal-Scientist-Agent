@@ -15,7 +15,7 @@ from ecsa.experimental.token_state_feedback import (
     TokenStates, TokenStatePort, TensorStates, SentenceTransformerTokenPort,
     StateArm, EvaluationDomain, TokenFeedbackConfig, TokenKANSystem,
     StateProjector, _losses, _allow_grad, train_warmup, fit_feedback,
-    benchmark_one, _batch_for,
+    benchmark_one, _batch_for, DEFAULT_ARMS,
 )
 from ecsa.experimental.verbalization_study import StudyLaw, _simulation
 
@@ -185,7 +185,7 @@ def test_no_heldout_leakage_in_training_and_eval_domains():
     rows=benchmark_one(StudyLaw.OPERATOR,seed=0,config=cfg,port=source,
                        model_id='fake',revision='fake')
     assert len(rows)==21
-    assert {r.arm for r in rows}==set(StateArm)
+    assert {r.arm for r in rows}==set(DEFAULT_ARMS)
     assert {r.domain for r in rows}==set(EvaluationDomain)
     assert {r.arm for r in rows if r.arm is StateArm.NUMERIC_CONTROL}=={StateArm.NUMERIC_CONTROL}
     assert all(r.identity_overlap==0 and r.train_pairs==20 and r.validation_pairs==8 for r in rows)
@@ -193,6 +193,56 @@ def test_no_heldout_leakage_in_training_and_eval_domains():
     assert all(r.model_width==96 for r in rows)
     assert all(0<=r.auroc<=1 and 0<=r.brier<=1 for r in rows)
     assert next(r for r in rows if r.arm is StateArm.ATTENTION_FEEDBACK).audit.encoder_updates==6
+
+
+def test_gated_attention_starts_with_exactly_same_projections_and_kan_as_token_mean():
+    torch.manual_seed(91)
+    control=TokenKANSystem(StateArm.TOKEN_MEAN,96)
+    torch.manual_seed(91)
+    gated=TokenKANSystem(StateArm.GATED_ATTENTION,96)
+    for name in ('x_encoder.projection.0.weight','y_encoder.projection.0.weight',
+                 'hypotheses.0.first.coefficients','hypotheses.1.last.coefficients'):
+        assert torch.equal(control.state_dict()[name], gated.state_dict()[name]),name
+    values=TensorStates.from_array(port().encode_many((
+        'one 12.01','one 12.10','operator greater than','operator less than')))
+    raw_mean=control.x_encoder._pooled(values)
+    raw_gate=gated.x_encoder._pooled(values)
+    assert (raw_mean-raw_gate).abs().max().item()<0.015
+    assert gated.x_encoder.residual_attention_gate.requires_grad
+
+
+def test_gated_attention_receives_kan_error_without_updating_kan_parameters():
+    source=port()
+    x,y=_batch_for(source,_simulation(StudyLaw.PRECISION,61,22,heldout=False))
+    torch.manual_seed(6)
+    model=TokenKANSystem(StateArm.GATED_ATTENTION,96)
+    model.x_encoder.fit_warmup_normalizer(x)
+    model.y_encoder.fit_warmup_normalizer(y)
+    _allow_grad(model,heads=False,encoders=True)
+    _losses(model,x,y,1).mean().backward()
+    assert model.x_encoder.residual_attention_gate.grad is not None
+    assert torch.isfinite(model.x_encoder.residual_attention_gate.grad).all()
+    assert all(p.grad is None for p in model.hypotheses.parameters())
+
+
+def test_gated_arms_are_matched_and_published_original_arms_unchanged():
+    source=port()
+    cfg=TokenFeedbackConfig(bootstrap=12,adaptation=8,calibration=8,heldout=8,
+                            warmup_steps=10,feedback_steps=6,checkpoint_every=3)
+    names=(StateArm.TOKEN_MEAN,StateArm.GATED_ATTENTION,
+           StateArm.GATED_KAN_UPDATE,StateArm.GATED_FEEDBACK)
+    rows=benchmark_one(StudyLaw.OPERATOR,8,cfg,source,model_id='stub',revision='stub',arms=names)
+    assert len(rows)==4*3
+    assert {r.arm for r in rows}==set(names)
+    assert all(r.train_pairs==20 and r.validation_pairs==8 and r.heldout_pairs==8 for r in rows)
+    assert len({r.head_parameters for r in rows})==1
+    control=next(r for r in rows if r.arm is StateArm.GATED_ATTENTION)
+    gated=next(r for r in rows if r.arm is StateArm.GATED_FEEDBACK)
+    assert control.audit.feedback_steps==0
+    assert gated.audit.feedback_steps in (0,6)
+    assert all(r.identity_overlap==0 for r in rows)
+    assert {r.domain for r in rows}==set(EvaluationDomain)
+    assert all(0<=r.auroc<=1 and 0<=r.brier<=1 for r in rows)
 
 
 def test_outcome_changes_do_not_modify_candidate_x():
