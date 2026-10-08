@@ -1,0 +1,139 @@
+name: neural-evolution-four-arm
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/ecsa/experimental/evolutionary_relations.py"
+      - "src/ecsa/experimental/intervention_relations.py"
+      - "tests/test_evolutionary_relations.py"
+      - ".github/workflows/neural-evolution-four-arm.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: neural-evolution-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install CPU-only torch
+        run: python -m pip install "torch>=2.3,<3" --index-url https://download.pytorch.org/whl/cpu
+      - name: Install test and optional neural dependencies
+        run: python -m pip install -e '.[test,neural-relations]'
+      - name: Check mutations, posterior epoch boundaries, heldout isolation and budgets
+        run: python -m pytest -q tests/test_evolutionary_relations.py tests/test_intervention_relations.py
+
+  experiments:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        law: [additive, multiplicative, implicit]
+    env:
+      OMP_NUM_THREADS: '1'
+      MKL_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install CPU-only torch
+        run: python -m pip install "torch>=2.3,<3" --index-url https://download.pytorch.org/whl/cpu
+      - name: Install neural experiments
+        run: python -m pip install -e '.[neural-relations]'
+      - name: Matched 12-seed interventions; four principal arms and retrain-only diagnostic
+        run: |
+          python -m ecsa.experimental.evolutionary_relations \
+            --laws ${{ matrix.law }} \
+            --seeds 0 1 2 3 4 5 6 7 8 9 10 11 \
+            --bootstrap 64 --steps 140 \
+            --interventions 12 --heldout 96 --candidates 24 \
+            --mutation-steps 32 --include-retrain-control \
+            --output evolution-results/${{ matrix.law }}.json
+      - name: Preserve predictions and all interventions
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evolution-law-${{ matrix.law }}-${{ github.sha }}
+          path: evolution-results/
+          if-no-files-found: ignore
+
+  summary:
+    needs: [tests, experiments]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: evolution-law-*
+          path: reports
+          merge-multiple: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate strict parity and compute cluster bootstrap
+        run: |
+          python - <<'PY'
+          import json
+          from collections import defaultdict
+          from pathlib import Path
+          import random
+
+          files = sorted(Path("reports").glob("*.json"))
+          assert len(files) == 3, files
+          rows = [row for f in files for row in json.loads(f.read_text())["results"]]
+          arms = {"fixed_random", "fixed_eig", "evolving_random", "evolving_adaptive_eig", "retrain_only_random"}
+          assert len(rows) == 180, len(rows)
+          by_key = defaultdict(dict)
+          for row in rows:
+              key = (row["law"], row["seed"])
+              assert row["arm"] not in by_key[key]
+              by_key[key][row["arm"]] = row
+              assert row["interventions"] == len(row["trials"]) == 12
+              assert row["warmup_observations"] == 64
+              assert row["heldout_observations"] == 96
+              assert row["random_choices"] + row["eig_choices"] == 12
+              assert len(row["checkpoints_nll"]) == 3
+          assert len(by_key) == 36
+          for group in by_key.values():
+              assert set(group) == arms
+              assert len({round(row["initial_nll"],12) for row in group.values()}) == 1
+              assert len({row["mutation_training_steps"] for arm,row in group.items() if arm.startswith("evolving") or arm == "retrain_only_random"}) == 1
+              assert group["fixed_random"]["mutation_proposals"] == 0
+              assert group["fixed_eig"]["mutation_proposals"] == 0
+              assert group["retrain_only_random"]["mutation_proposals"] == 0
+          averages = {arm: sum(r["final_nll"] for r in rows if r["arm"] == arm)/36 for arm in sorted(arms)}
+          seed_means = defaultdict(dict)
+          for seed in range(12):
+              for arm in arms:
+                  seed_means[seed][arm] = sum(by_key[(law, seed)][arm]["final_nll"] for law in ("additive","multiplicative","implicit"))/3
+          rng = random.Random(12842)
+          contrasts = {}
+          for a,b in (
+              ("evolving_random","fixed_random"),
+              ("evolving_adaptive_eig","evolving_random"),
+              ("evolving_random","retrain_only_random"),
+          ):
+              deltas = [seed_means[seed][a]-seed_means[seed][b] for seed in range(12)]
+              boot = sorted(sum(rng.choice(deltas) for _ in range(12))/12 for _ in range(10000))
+              contrasts[a+" minus "+b] = {
+                  "mean_nll_difference":sum(deltas)/12,
+                  "cluster_bootstrap_95":[boot[250],boot[9750]],
+                  "seeds_improved":sum(d<0 for d in deltas),
+              }
+          output={"rows":len(rows),"mean_nll":averages,"paired":contrasts,"interpretation":"Exploratory synthetic evidence, not proof of a benefit from mutation or EIG."}
+          Path("reports/summary.json").write_text(json.dumps(output, indent=2, sort_keys=True))
+          print(json.dumps(output, indent=2, sort_keys=True))
+          PY
+      - name: Preserve aggregate and paired confidence intervals
+        uses: actions/upload-artifact@v4
+        with:
+          name: evolution-12seeds-summary-${{ github.sha }}
+          path: reports/summary.json
