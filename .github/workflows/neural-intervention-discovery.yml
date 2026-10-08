@@ -1,0 +1,80 @@
+name: neural-intervention-discovery
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/ecsa/experimental/intervention_relations.py"
+      - "src/ecsa/experimental/relation_discovery.py"
+      - "tests/test_intervention_relations.py"
+      - ".github/workflows/neural-intervention-discovery.yml"
+      - "pyproject.toml"
+  workflow_dispatch:
+
+concurrency:
+  group: neural-intervention-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  causal-intervention-protocol:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install CPU-only PyTorch
+        run: python -m pip install "torch>=2.3,<3" --index-url https://download.pytorch.org/whl/cpu
+      - name: Install optional dependencies
+        run: python -m pip install -e '.[test,neural-relations]'
+      - name: Test intervention-only protocol and ScienceKernel Bayesian updates
+        run: python -m pytest -q tests/test_intervention_relations.py tests/test_relation_discovery.py
+      - name: Controlled three-law experiment
+        run: |
+          python -m ecsa.experimental.intervention_relations \
+            --seeds 0 1 2 --bootstrap 64 --steps 140 \
+            --interventions 12 --heldout 96 --candidates 24 \
+            --output neural-intervention-results/benchmark.json \
+            > neural-intervention-results.stdout
+      - name: Validate fair-budget reporting
+        run: |
+          python - <<'PY'
+          import json
+          from collections import defaultdict
+          from pathlib import Path
+          data = json.loads(Path("neural-intervention-results/benchmark.json").read_text())
+          records = data["results"]
+          assert len(records) == 36, len(records)
+          groups = defaultdict(list)
+          for row in records:
+              groups[(row["law"], row["seed"])].append(row)
+              assert row["interventions"] == 12
+              assert len(row["trials"]) == 12
+              assert row["heldout"] == 96
+              assert row["warmup_observations"] == 64
+          for key, group in groups.items():
+              assert {(r["model_family"], r["policy"]) for r in group} == {
+                  ("kan","eig"), ("kan","random"), ("mlp","eig"), ("mlp","random")
+              }
+              assert group[0]["knn_nll"] == group[1]["knn_nll"]
+              assert group[0]["unconditional_nll"] == group[1]["unconditional_nll"]
+              for family in ("kan", "mlp"):
+                  pair = [r for r in group if r["model_family"] == family]
+                  assert pair[0]["initial_nll"] == pair[1]["initial_nll"]
+          for family in ("kan", "mlp"):
+              for policy in ("eig","random"):
+                  rows = [r for r in records if r["model_family"]==family and r["policy"]==policy]
+                  print(f"{family}/{policy} mean heldout NLL: "
+                        f"{sum(r['final_nll'] for r in rows)/len(rows):.4f}")
+          print("SYNTHETIC INTERVENTION PROTOCOL VERIFIED; empirical improvement not assumed")
+          PY
+      - name: Preserve transitions and summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: neural-do-x-then-observe-y-${{ github.sha }}
+          path: |
+            neural-intervention-results/
+            neural-intervention-results.stdout
+          if-no-files-found: ignore
