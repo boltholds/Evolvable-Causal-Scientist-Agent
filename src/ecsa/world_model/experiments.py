@@ -176,7 +176,11 @@ class ContractExperimentCoordinator:
         candidates: StructuralCandidateGenerator | None = None,
         affordances: ActiveAffordanceLearner | None = None,
         preconditions: ActivePreconditionLearner | None = None,
+        use_affordance_scoring: bool = True,
     ) -> None:
+        if type(use_affordance_scoring) is not bool:
+            raise TypeError("use_affordance_scoring must be bool")
+        self.use_affordance_scoring = use_affordance_scoring
         self.science = science or ScienceKernel()
         self.affordances = affordances if affordances is not None else ActiveAffordanceLearner()
         self.preconditions = preconditions if preconditions is not None else ActivePreconditionLearner()
@@ -213,8 +217,8 @@ class ContractExperimentCoordinator:
                 -self.history.bootstrap_score(
                     experiment.action,
                 )[1],
-                -self.affordances.score(experiment.action)[0],
-                -self.affordances.score(experiment.action)[1],
+                -(self.affordances.score(experiment.action)[0] if self.use_affordance_scoring else 0.0),
+                -(self.affordances.score(experiment.action)[1] if self.use_affordance_scoring else 0.0),
                 experiment.action.schema_id,
                 experiment.experiment_id,
             ),

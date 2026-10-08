@@ -32,6 +32,7 @@ class ArenaBResult:
     transitions: int
     grounding_evidence_count: int
     contract_count: int
+    successes: int = 0
 
 
 def _wire(value):
@@ -71,6 +72,7 @@ def run_autonomous_episode(
     max_steps: int,
     output_dir: Path,
     max_ground_actions: int = 64,
+    use_affordance_scoring: bool = True,
 ) -> ArenaBResult:
     if scenario != "Reactor Lab" or difficulty != "Normal":
         raise ValueError(
@@ -92,7 +94,9 @@ def run_autonomous_episode(
     )
     scientist = AutonomousScientist(
         world_model=world_model,
-        experiments=ContractExperimentCoordinator(),
+        experiments=ContractExperimentCoordinator(
+            use_affordance_scoring=use_affordance_scoring,
+        ),
         perception=perception,
     )
     budget = ExperimentBudget(
@@ -107,6 +111,7 @@ def run_autonomous_episode(
     outcome_path.write_text("")
 
     transition_count = 0
+    successes = 0
     evidence_ids: set[str] = set()
 
     while (
@@ -140,6 +145,7 @@ def run_autonomous_episode(
         update = scientist.observe_transition(transition)
         evidence_ids.update(update.new_evidence_ids)
         transition_count += 1
+        successes += int(outcome.success)
 
         _append_jsonl(
             transition_path,
@@ -179,4 +185,5 @@ def run_autonomous_episode(
         contract_count=len(
             world_model.contract_hypotheses()
         ),
+        successes=successes,
     )
