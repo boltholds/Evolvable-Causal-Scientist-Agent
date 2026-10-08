@@ -7,8 +7,9 @@ on:
       - ".github/workflows/arena-b-applicability.yml"
       - "src/ecsa/world_model/**"
       - "src/ecsa/autonomy/scientist.py"
+      - "src/ecsa/benchmarks/lifted_transfer.py"
       - "src/ecsa/benchmarks/discoveryworld/arena_b.py"
-      - "src/ecsa/benchmarks/discoveryworld/paired_arena_b.py"
+      - "src/ecsa/benchmarks/discoveryworld/lifted_ablation.py"
   workflow_dispatch:
 
 concurrency:
@@ -16,6 +17,18 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  heldout-transfer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install -e '.[test]'
+      - name: Evaluate disjoint identities
+        run: python -m ecsa.benchmarks.lifted_transfer
+
   paired:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -26,7 +39,7 @@ jobs:
           python-version: '3.12'
       - name: Install
         run: pip install -e '.[test,discoveryworld]'
-      - name: Paired Arena B evaluation
+      - name: Three-arm Arena B evaluation
         env:
           SDL_VIDEODRIVER: dummy
           SDL_AUDIODRIVER: dummy
@@ -35,24 +48,24 @@ jobs:
           import json
           from dataclasses import asdict
           from pathlib import Path
-          from ecsa.benchmarks.discoveryworld.paired_arena_b import run_paired_arena_b
+          from ecsa.benchmarks.discoveryworld.lifted_ablation import run_lifted_arena_ablation
 
-          results = run_paired_arena_b(
+          results = run_lifted_arena_ablation(
               seeds=(0, 1),
               max_steps=36,
               max_ground_actions=64,
-              output_dir=Path("arena-b-paired-results"),
+              output_dir=Path("arena-b-lifted-results"),
           )
           report = [asdict(result) for result in results]
-          Path("arena-b-paired-results/summary.json").write_text(
+          Path("arena-b-lifted-results/summary.json").write_text(
               json.dumps(report, indent=2, sort_keys=True) + "\n",
           )
-          print("ARENA_B_PAIRED_JSON=" + json.dumps(report, sort_keys=True))
+          print("ARENA_B_LIFTED_JSON=" + json.dumps(report, sort_keys=True))
           PY
-      - name: Preserve raw transitions and evaluation
+      - name: Preserve raw transitions and ablation results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: arena-b-applicability-${{ github.sha }}
-          path: arena-b-paired-results/
+          name: arena-b-lifted-${{ github.sha }}
+          path: arena-b-lifted-results/
           if-no-files-found: ignore
