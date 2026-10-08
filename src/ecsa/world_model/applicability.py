@@ -17,6 +17,7 @@ class ApplicabilityRule(StrEnum):
     ALWAYS = "always"
     NEVER = "never"
     ARGUMENT_EQUALS = "argument_equals"
+    ARGUMENT_DIFFERS = "argument_differs"
     FEATURE_PRESENT = "feature_present"
     FEATURE_ABSENT = "feature_absent"
     ARGUMENT_AND_FEATURE = "argument_and_feature"
@@ -39,6 +40,7 @@ class ApplicabilityHypothesis:
             raise TypeError("typed applicability rule required")
         uses_argument = self.rule in (
             ApplicabilityRule.ARGUMENT_EQUALS,
+            ApplicabilityRule.ARGUMENT_DIFFERS,
             ApplicabilityRule.ARGUMENT_AND_FEATURE,
         )
         uses_feature = self.rule in (
@@ -92,6 +94,8 @@ class ApplicabilityHypothesis:
         argument_matches = action.arguments[self.argument_index] == self.argument_value
         if self.rule is ApplicabilityRule.ARGUMENT_EQUALS:
             return argument_matches
+        if self.rule is ApplicabilityRule.ARGUMENT_DIFFERS:
+            return not argument_matches
         return argument_matches and self.condition in conditions
 
     def success_probability(
@@ -129,6 +133,7 @@ class ActiveApplicabilityLearner:
         ApplicabilityRule.ALWAYS: 0.20,
         ApplicabilityRule.NEVER: 0.20,
         ApplicabilityRule.ARGUMENT_EQUALS: 0.25,
+        ApplicabilityRule.ARGUMENT_DIFFERS: 0.15,
         ApplicabilityRule.FEATURE_PRESENT: 0.20,
         ApplicabilityRule.FEATURE_ABSENT: 0.05,
         ApplicabilityRule.ARGUMENT_AND_FEATURE: 0.10,
@@ -185,12 +190,16 @@ class ActiveApplicabilityLearner:
             ApplicabilityHypothesis(schema_id, arity, ApplicabilityRule.ALWAYS),
             ApplicabilityHypothesis(schema_id, arity, ApplicabilityRule.NEVER),
         )
-        if not positive or not negative:
+        # A single result cannot ground a useful competing explanation.
+        # One-sided repeated evidence may motivate probes, but cannot prove
+        # an argument type or a causal precondition.
+        if len(trials) < 2:
             return ()
 
         arguments: Counter[tuple[int, FrozenRawValue]] = Counter()
         features: Counter[FeatureCondition] = Counter()
         negative_features: Counter[FeatureCondition] = Counter()
+        negative_arguments: Counter[tuple[int, FrozenRawValue]] = Counter()
         joints: Counter[tuple[int, FrozenRawValue, FeatureCondition]] = Counter()
         for trial in positive:
             for index, argument in enumerate(trial.action.arguments):
@@ -200,6 +209,8 @@ class ActiveApplicabilityLearner:
             features.update(trial.conditions)
         for trial in negative:
             negative_features.update(trial.conditions)
+            for index, argument in enumerate(trial.action.arguments):
+                negative_arguments[(index, argument)] += 1
 
         def rank(counter: Counter):
             return sorted(counter, key=lambda key: (-counter[key], repr(key)))
@@ -210,6 +221,15 @@ class ActiveApplicabilityLearner:
             )
             for index, value in rank(arguments)[:self.max_argument_rules]
         )
+        # Rejecting one ground action does not invalidate its argument:
+        # a "different argument" rule is a competing *noisy hypothesis*.
+        differing_rules = tuple(
+            ApplicabilityHypothesis(
+                schema_id, arity, ApplicabilityRule.ARGUMENT_DIFFERS, index, value,
+            )
+            for index, value in rank(negative_arguments)
+            if (index, value) not in arguments
+        )[:self.max_argument_rules]
         feature_rules = tuple(
             ApplicabilityHypothesis(
                 schema_id, arity, ApplicabilityRule.FEATURE_PRESENT, condition=condition,
@@ -232,7 +252,7 @@ class ActiveApplicabilityLearner:
             )
             for index, value, condition in rank(joints)[:self.max_joint_rules]
         )
-        return base + arg_rules + feature_rules + absent_rules + joint_rules
+        return base + arg_rules + differing_rules + feature_rules + absent_rules + joint_rules
 
     def belief(self, schema_id: str, arity: int) -> ApplicabilityBelief | None:
         if not schema_id or type(arity) is not int or arity < 0:
