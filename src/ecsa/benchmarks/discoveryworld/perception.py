@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from math import isfinite
 
 from ecsa.world_model.contracts import (
     RawObservation,
@@ -83,6 +84,21 @@ class DiscoveryWorldStructuredDecoder:
                             provenance_id=(
                                 raw_observation.observation_id
                             ),
+                        )
+                    )
+            # Transport all exposed scalar object features without assigning
+            # domain-specific meanings. Identity is already source_identity.
+            for key, value in sorted(item.items()):
+                if key in ("uuid", "name", "description"):
+                    continue
+                if type(value) in (bool, int, float) and (
+                    type(value) is bool or isfinite(float(value))
+                ):
+                    features.append(
+                        ObservedFeature(
+                            feature_id=f"public:{key}",
+                            value=freeze_raw_value(value),
+                            provenance_id=raw_observation.observation_id,
                         )
                     )
             for membership in sorted(

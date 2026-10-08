@@ -18,6 +18,7 @@ from ecsa.world_model.kernel import (
     WorldModelAcquisitionKernel,
 )
 from ecsa.world_model.learners.locm2 import Locm2Learner
+from ecsa.world_model.relations import NumericRelationAcquisition
 from ecsa.world_model.perception.structured import (
     StructuredObservationFrontend,
 )
@@ -47,6 +48,8 @@ class ArenaBResult:
     lifted_brier: float = 0.0
     lifted_ready_brier: float = 0.0
     lifted_ready_schema_brier: float = 0.0
+    numeric_relation_samples: int = 0
+    trainable_numeric_relation_groups: int = 0
 
 
 def _wire(value):
@@ -108,6 +111,7 @@ def run_autonomous_episode(
     perception = StructuredObservationFrontend(
         DiscoveryWorldStructuredDecoder()
     )
+    relations = NumericRelationAcquisition()
     scientist = AutonomousScientist(
         world_model=world_model,
         experiments=ContractExperimentCoordinator(
@@ -116,6 +120,7 @@ def run_autonomous_episode(
             use_lifted_selection=use_lifted_selection,
         ),
         perception=perception,
+        relations=relations,
     )
     budget = ExperimentBudget(
         max_ground_actions=max_ground_actions,
@@ -287,6 +292,8 @@ def run_autonomous_episode(
             world_model.contract_hypotheses()
         ),
         successes=successes,
+        numeric_relation_samples=relations.total_samples,
+        trainable_numeric_relation_groups=len(relations.ready_datasets()),
         applicability_eig_count=applicability_eig_count,
         contract_eig_count=contract_eig_count,
         model_prediction_count=model_prediction_count,
