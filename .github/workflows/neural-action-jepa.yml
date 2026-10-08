@@ -1,0 +1,70 @@
+name: neural-action-jepa
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/ecsa/experimental/action_jepa.py'
+      - 'src/ecsa/experimental/jepa_world.py'
+      - 'src/ecsa/experimental/jepa_causal_scientist.py'
+      - 'src/ecsa/experimental/jepa_commutator_arena.py'
+      - 'scripts/benchmarks/run_action_jepa.py'
+      - 'tests/test_action_jepa.py'
+      - 'docs/experiments/2026-10-08-action-jepa-commutator-arena.md'
+      - '.github/workflows/neural-action-jepa.yml'
+  pull_request:
+    paths:
+      - 'src/ecsa/experimental/action_jepa.py'
+      - 'src/ecsa/experimental/jepa_world.py'
+      - 'src/ecsa/experimental/jepa_causal_scientist.py'
+      - 'src/ecsa/experimental/jepa_commutator_arena.py'
+      - 'scripts/benchmarks/run_action_jepa.py'
+      - 'tests/test_action_jepa.py'
+      - '.github/workflows/neural-action-jepa.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: neural-action-jepa-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  offline-jepa-causal-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      OMP_NUM_THREADS: '2'
+      MKL_NUM_THREADS: '2'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install CPU PyTorch
+        run: python -m pip install 'torch>=2.3,<3' --index-url https://download.pytorch.org/whl/cpu
+      - name: Install offline test dependencies
+        run: python -m pip install -e '.[test,neural-relations]'
+      - name: RED/GREEN contracts and CLI
+        run: python -m pytest -q tests/test_action_jepa.py
+      - name: Run CPU smoke without checkpoint downloads
+        run: |
+          python scripts/benchmarks/run_action_jepa.py \
+            --mode smoke --device cpu --seed 0 \
+            --output results/action_jepa/smoke.json
+      - name: Validate report honesty
+        run: |
+          python - <<'PY'
+          import json
+          data = json.load(open('results/action_jepa/smoke.json'))
+          assert data['protocol'] == 'action_jepa_commutator_v1'
+          assert len(data['mechanisms']) == 2
+          assert all(row['jepa']['trained_on_law_labels'] is False
+                     for row in data['mechanisms'])
+          assert data['limitations']
+          print('JEPA SMOKE REPORT VALIDATED: no pretrained model, no law-label training')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: action-jepa-smoke-${{ github.sha }}
+          path: results/action_jepa/
+          if-no-files-found: ignore
