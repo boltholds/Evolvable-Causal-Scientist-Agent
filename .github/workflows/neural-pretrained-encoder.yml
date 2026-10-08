@@ -73,7 +73,7 @@ jobs:
           import json
           from collections import defaultdict
           d=json.load(open('results/minilm_pretrained.json'))
-          assert len(d['results'])==3*2*4*2, len(d['results'])
+          assert len(d['results'])==(3*2*4*2 + 2*2*4), len(d['results'])
           groups=defaultdict(list)
           for item in d['results']:
               assert item['train_test_identity_overlap']==0
@@ -125,7 +125,7 @@ jobs:
           python - <<'PY'
           import json
           d=json.load(open('results/qwen_frozen_interaction.json'))
-          assert len(d['results'])==8
+          assert len(d['results'])==12
           assert len({r['kan_parameters'] for r in d['results']})==1
           assert all(r['train_test_identity_overlap']==0 for r in d['results'])
           print([(r['arm'],r['eval_domain'],round(r['auroc'],4)) for r in d['results']])

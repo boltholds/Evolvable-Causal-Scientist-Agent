@@ -12,6 +12,7 @@ torch = pytest.importorskip("torch")
 from ecsa.experimental.pretrained_text_study import (
     ComparableFeatures, EncoderArm, EvalDomain, PretrainedStudyConfig,
     SentenceTransformerTextEncoder, _hard_negatives, _paraphrase,
+    _opposite_mode_outcomes, _move_model_features,
     benchmark, fit_lora_on_observed_pairs,
 )
 from ecsa.experimental.text_first_kan import FixtureLaw, HashedTextFeatures, _simulation
@@ -98,7 +99,7 @@ def test_four_arms_two_eval_domains_have_same_budgets_and_holdout_ids():
         model_id="fake", config=cfg, seeds=(0,), laws=(FixtureLaw.INTERACTION,),
         sentence_model=FakeSentenceTransformer(),
     )
-    assert len(rows) == 8
+    assert len(rows) == 12
     assert {r.arm for r in rows} == {
         EncoderArm.HASH, EncoderArm.FROZEN, EncoderArm.HYBRID, EncoderArm.NUMERIC,
     }
@@ -117,7 +118,7 @@ def test_hash_numeric_can_run_without_sentence_transformers():
         config=cfg, seeds=(2,), laws=(FixtureLaw.CATEGORICAL,),
         arms=(EncoderArm.HASH, EncoderArm.NUMERIC),
     )
-    assert len(rows) == 4
+    assert len(rows) == 6
 
 
 def test_lora_must_be_last_and_single_law_seed_per_model():
@@ -157,5 +158,31 @@ def test_cli_offline_baseline_produces_json(tmp_path, monkeypatch, capsys):
     ])
     main()
     report = json.loads(path.read_text(encoding="utf-8"))
-    assert len(report["results"]) == 4
-    assert json.loads(capsys.readouterr().out)["runs"] == 4
+    assert len(report["results"]) == 6
+    assert json.loads(capsys.readouterr().out)["runs"] == 6
+
+
+def test_opposite_mode_counterfactual_preserves_numeric_X_and_flips_Y():
+    for law in (FixtureLaw.CATEGORICAL, FixtureLaw.INTERACTION):
+        samples = _simulation(law, 11, 20, heldout=True)
+        opposite = _opposite_mode_outcomes(samples, law)
+        assert len(opposite) == len(samples)
+        for original, other in zip(samples, opposite):
+            assert original.x_text == other.x_text
+            measurement = float(json.loads(original.y_text)["after"]["measurement"])
+            alternative = float(json.loads(other.y_text)["after"]["measurement"])
+            assert abs(measurement + alternative) < 0.2
+        assert any(a.y_text != b.y_text for a, b in zip(samples, opposite))
+    with pytest.raises(ValueError):
+        _opposite_mode_outcomes(
+            _simulation(FixtureLaw.NUMERIC, 1, 12, heldout=True),
+            FixtureLaw.NUMERIC,
+        )
+
+
+def test_tokenizer_metadata_survives_device_transfer():
+    original={"input_ids":torch.tensor([[3,5]]), "prompt": "search", "n": 2}
+    moved=_move_model_features(original, torch.device("cpu"))
+    assert torch.equal(moved["input_ids"], original["input_ids"])
+    assert moved["prompt"] == "search"
+    assert moved["n"] == 2

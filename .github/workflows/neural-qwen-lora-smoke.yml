@@ -46,7 +46,7 @@ jobs:
           import json
           d=json.load(open('results/qwen_lora_cpu.json'))
           rows=d['results']
-          assert len(rows)==4
+          assert len(rows)==6
           assert {r['arm'] for r in rows} == {
               'frozen_pretrained_text','lora_pretrained_text'
           }

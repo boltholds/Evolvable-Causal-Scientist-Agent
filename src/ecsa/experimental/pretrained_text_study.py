@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from enum import StrEnum
 from math import isfinite
 from pathlib import Path
@@ -51,6 +51,7 @@ class EncoderArm(StrEnum):
 class EvalDomain(StrEnum):
     HELDOUT = "heldout"
     PARAPHRASE = "paraphrase"
+    CONTRASTED_MODE = "contrasted_mode"
 
 
 @dataclass(frozen=True)
@@ -159,6 +160,37 @@ def _paraphrase(sample: TextRelationSample) -> TextRelationSample:
     )
 
 
+def _opposite_mode_outcomes(
+    samples: tuple[TextRelationSample, ...], law: FixtureLaw,
+) -> tuple[TextRelationSample, ...]:
+    """Evaluation-only counterfactual: X unchanged, Y from opposite mode.
+
+    This requires the benchmark's hidden law and is NEVER used in training.
+    Keeping numeric X fixed removes the conditional-magnitude shortcut.
+    """
+    if law not in (FixtureLaw.CATEGORICAL, FixtureLaw.INTERACTION):
+        raise ValueError("only laws that depend on the categorical mode qualify")
+    counterfactual: list[TextRelationSample] = []
+    for sample in samples:
+        x = json.loads(sample.x_text)["before"]
+        u = float(x["controls"]["left"])
+        v = float(x["controls"]["right"])
+        sign = 1 if x["object"]["hue"] == "amber" else -1
+        if law is FixtureLaw.CATEGORICAL:
+            y = -sign * .75
+        else:
+            y = -sign * (.72 * u - .18 * v + .12)
+        outcome = json.loads(sample.y_text)
+        outcome["after"]["measurement"] = round(float(y), 4)
+        outcome["after"]["description"] = "a high signal" if y > 0 else "a low signal"
+        counterfactual.append(replace(
+            sample,
+            y_text=json.dumps(outcome, sort_keys=True, ensure_ascii=False,
+                              separators=(",", ":")),
+        ))
+    return tuple(counterfactual)
+
+
 class ComparableFeatures:
     """Same input width in every arm: text dim | numeric dim."""
 
@@ -248,11 +280,20 @@ def _score(
     arm: EncoderArm, features: ComparableFeatures, *, law: FixtureLaw,
     seed: int, train: tuple[TextRelationSample, ...], domain: EvalDomain,
     model_id: str, revision: str | None, lora_steps: int,
+    negative_samples: tuple[TextRelationSample, ...] | None = None,
 ) -> Score:
     x, y = features.make(samples, arm)
-    negatives = _hard_negatives(samples)
+    if negative_samples is None:
+        negatives = _hard_negatives(samples)
+        y_negative = y[negatives]
+    else:
+        if len(negative_samples) != len(samples):
+            raise ValueError("counterfactual length mismatch")
+        x_negative, y_negative = features.make(negative_samples, arm)
+        if not np.allclose(x_negative, x):
+            raise ValueError("counterfactual changed pre-action X")
     with torch.no_grad():
-        p = probability(model, np.concatenate((x, x)), np.concatenate((y, y[negatives])))
+        p = probability(model, np.concatenate((x, x)), np.concatenate((y, y_negative)))
     truth = np.concatenate((np.ones(len(samples)), np.zeros(len(samples))))
     score = float(((p-truth)**2).mean())
     train_ids = {json.loads(sample.x_text)["before"]["object"]["identity"] for sample in train}
@@ -280,6 +321,12 @@ def _train_kan(
     model = DualEncoderRelation(HeadKind.SPLINE_KAN, 2 * config.feature_size)
     fit(model, data, seed=seed * 1000 + 113, steps=config.train_steps, lr=config.lr)
     return model
+
+
+def _move_model_features(features: dict[str, object], device: torch.device) -> dict[str, object]:
+    """SentenceTransformer may include non-Tensor tokenizer metadata."""
+    return {key: value.to(device) if isinstance(value, torch.Tensor) else value
+            for key, value in features.items()}
 
 
 def fit_lora_on_observed_pairs(
@@ -320,8 +367,8 @@ def fit_lora_on_observed_pairs(
         ids = rng.choice(len(pairs), size=min(batch_size, len(pairs)), replace=False)
         left = model.tokenize([x_texts[i] for i in ids])
         right = model.tokenize([y_texts[i] for i in ids])
-        left = {key: value.to(device) for key, value in left.items()}
-        right = {key: value.to(device) for key, value in right.items()}
+        left = _move_model_features(left, device)
+        right = _move_model_features(right, device)
         zx = model(left)["sentence_embedding"][:, :encoder.dimension]
         zy = model(right)["sentence_embedding"][:, :encoder.dimension]
         logits = (torch.nn.functional.normalize(zx, dim=1) @
@@ -392,10 +439,16 @@ def benchmark(
                         s for sample in (train + test) for s in (sample.x_text, sample.y_text)
                     ))
                 model = _train_kan(train, features, arm, seed=seed, config=config)
-                for domain, observed in (
-                    (EvalDomain.HELDOUT, test),
-                    (EvalDomain.PARAPHRASE, tuple(_paraphrase(sample) for sample in test)),
-                ):
+                domains = [
+                    (EvalDomain.HELDOUT, test, None),
+                    (EvalDomain.PARAPHRASE, tuple(_paraphrase(sample) for sample in test), None),
+                ]
+                if law in (FixtureLaw.CATEGORICAL, FixtureLaw.INTERACTION):
+                    domains.append((
+                        EvalDomain.CONTRASTED_MODE, test,
+                        _opposite_mode_outcomes(test, law),
+                    ))
+                for domain, observed, negative in domains:
                     rows.append(_score(
                         model, observed, arm, features,
                         law=law, seed=seed, train=train, domain=domain,
@@ -406,6 +459,7 @@ def benchmark(
                             EncoderArm.FROZEN, EncoderArm.HYBRID, EncoderArm.LORA,
                         ) else None,
                         lora_steps=config.lora_steps if arm is EncoderArm.LORA else 0,
+                        negative_samples=negative,
                     ))
     return tuple(rows)
 
