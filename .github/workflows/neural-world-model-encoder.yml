@@ -1,0 +1,91 @@
+name: neural-world-model-encoder
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/ecsa/experimental/world_model_encoders.py'
+      - 'src/ecsa/experimental/world_model_encoder_benchmark.py'
+      - 'tests/test_world_model_encoders.py'
+      - '.github/workflows/neural-world-model-encoder.yml'
+      - 'docs/experiments/2026-10-08-pretrained-world-model-encoders.md'
+  workflow_dispatch:
+
+concurrency:
+  group: neural-world-model-encoder-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  offline-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install CPU torch
+        run: python -m pip install 'torch>=2.3,<3' --index-url https://download.pytorch.org/whl/cpu
+      - name: Install offline tests and neural packages
+        run: python -m pip install -e '.[test,neural-relations]'
+      - name: Frozen model, logits shift, mask, guardrails, leakage
+        run: python -m pytest -q tests/test_world_model_encoders.py tests/test_token_state_relations.py tests/test_verbalization_study.py
+      - name: Candidate registry requires no downloads
+        run: python -m ecsa.experimental.world_model_encoder_benchmark --list-candidates
+
+  real-small-qwen25-cpu:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      TOKENIZERS_PARALLELISM: 'false'
+      OMP_NUM_THREADS: '2'
+      MKL_NUM_THREADS: '2'
+      HF_HUB_DISABLE_XET: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install CPU torch
+        run: python -m pip install 'torch>=2.3,<3' --index-url https://download.pytorch.org/whl/cpu
+      - name: Install actual causal language model dependencies
+        run: python -m pip install -e '.[pretrained-encoder]'
+      - name: Smoke test real (non-BehR) Qwen2.5 0.5B hidden states and NLL
+        run: |
+          python -m ecsa.experimental.world_model_encoder_benchmark \
+            --candidate small_qwen25 --device cpu \
+            --laws precision --seeds 0 \
+            --arms sentence_full token_mean numeric_control \
+            --bootstrap 8 --adaptation 5 --calibration 4 --heldout 8 \
+            --warmup-steps 8 --extra-kan-steps 4 --checkpoint-every 2 \
+            --likelihood-pairs 2 --max-length 1024 \
+            --output results/qwen25_small_real.json > results_summary.txt
+      - name: Verify real model inference but not pretend it is BehR
+        run: |
+          python - <<'PY'
+          import json
+          data=json.load(open('results/qwen25_small_real.json'))
+          assert data['candidate']=='small_qwen25'
+          assert data['model_id']=='Qwen/Qwen2.5-0.5B'
+          assert data['is_actual_behR'] is False
+          assert data['backbone_forward_batches']>0
+          assert data['audited_sequences']>0
+          rows=data['scores']
+          assert len(rows)==9, len(rows)
+          assert all(row['identity_overlap']==0 for row in rows)
+          assert {r['arm'] for r in rows}=={'sentence_full','token_mean','numeric_control'}
+          assert len({r['head_parameters'] for r in rows})==1
+          assert all(0<=r['auroc']<=1 for r in rows)
+          assert len(data['generative_likelihood'])==1
+          assert data['generative_likelihood'][0]['pairs_examined']>0
+          print('REAL SMALL QWEN SMOKE VERIFIED; BehR NOT RUN')
+          print(open('results_summary.txt').read())
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: world-model-encoder-small-qwen-${{ github.sha }}
+          path: |
+            results/
+            results_summary.txt
+          if-no-files-found: ignore
