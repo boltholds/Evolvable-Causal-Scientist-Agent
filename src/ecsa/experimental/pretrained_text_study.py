@@ -473,7 +473,7 @@ def main() -> None:
                 ])), 4)
                 for domain in EvalDomain if any(r.arm is arm and r.eval_domain is domain for r in result)
             }
-            for arm in arms
+            for arm in (EncoderArm(value) for value in args.arms)
         },
     }, indent=2))
 

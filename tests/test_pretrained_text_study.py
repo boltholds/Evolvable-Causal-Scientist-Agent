@@ -142,3 +142,20 @@ def test_train_never_receives_eval_outcomes_and_backbone_lazy():
     assert "fit_lora_on_observed_pairs(\n                        encoder, train," in src
     assert "heldout" not in inspect.signature(fit_lora_on_observed_pairs).parameters
     assert "sentence_transformers" not in inspect.getsource(module.ComparableFeatures)
+
+
+def test_cli_offline_baseline_produces_json(tmp_path, monkeypatch, capsys):
+    import sys
+    from ecsa.experimental.pretrained_text_study import main
+    path = tmp_path / "baseline.json"
+    monkeypatch.setattr(sys, "argv", [
+        "pretrained_text_study", "--arms", "hash_text", "numeric_only",
+        "--laws", "categorical", "--seeds", "0",
+        "--train-samples", "24", "--heldout-samples", "16",
+        "--feature-size", "32", "--steps", "12",
+        "--output", str(path),
+    ])
+    main()
+    report = json.loads(path.read_text(encoding="utf-8"))
+    assert len(report["results"]) == 4
+    assert json.loads(capsys.readouterr().out)["runs"] == 4
