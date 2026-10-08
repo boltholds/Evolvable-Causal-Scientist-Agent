@@ -199,7 +199,7 @@ class TokenFeedbackConfig:
     warmup_lr: float = 0.012
     feedback_lr: float = 0.005
     preservation_weight: float = 0.35
-    variance_weight: float = 0.12
+    variance_weight: float = 0.80
     min_spread: float = 0.006
     tolerance: float = 0.06
 
@@ -268,7 +268,10 @@ class StateProjector(nn.Module):
     def weights(self, states: TensorStates) -> Tensor:
         if self.token_attention is None:
             return states.mask.float() / states.mask.float().sum(1,keepdim=True)
-        logits = self.token_attention(F.layer_norm(states.tokens,(self.width,))).squeeze(-1)
+        # Hard-bounded token scores prevent a single common special token
+        # from monopolizing the entire attention mass during warmup.
+        raw = self.token_attention(F.layer_norm(states.tokens,(self.width,))).squeeze(-1)
+        logits = 1.5 * torch.tanh(raw / 1.5)
         logits = logits.masked_fill(~states.mask, torch.finfo(logits.dtype).min)
         return torch.softmax(logits,dim=1)
 
@@ -277,8 +280,15 @@ class StateProjector(nn.Module):
             return F.normalize(states.sentence[:,:64],dim=1)
         if self.mode is StateArm.SENTENCE_FULL:
             return states.sentence
+        # The context-preserving masked-mean skip path is immutable: attention
+        # can focus on predictive tokens but cannot destroy the shared state.
+        mean = states.mask.float() / states.mask.float().sum(1, keepdim=True)
+        pooled_mean = torch.einsum("bt,btd->bd", mean, states.tokens)
+        if self.token_attention is None:
+            return F.normalize(pooled_mean,dim=1)
         attention = self.weights(states)
-        vector = torch.einsum("bt,btd->bd", attention, states.tokens)
+        attended = torch.einsum("bt,btd->bd",attention,states.tokens)
+        vector = 0.65 * pooled_mean + 0.35 * attended
         return F.normalize(vector,dim=1)
 
     @torch.no_grad()
@@ -384,14 +394,32 @@ def train_warmup(mode:StateArm,x:TensorStates,y:TensorStates,config:TokenFeedbac
     model.y_encoder.fit_warmup_normalizer(y)
     optimizer=torch.optim.AdamW(model.parameters(),lr=config.warmup_lr)
     rng=np.random.default_rng(seed*1000+65)
-    for _ in range(config.warmup_steps):
+    # Train-only constrained checkpoint selection prevents a catastrophic
+    # end-of-warmup collapse from replacing an earlier informative state.
+    with torch.no_grad():
+        initial_spread = model.min_spread(x,y)
+        initial_score = float(_losses(model,x,y,1).mean())
+    best = copy.deepcopy(model.state_dict()) if initial_spread >= config.min_spread else None
+    best_score = initial_score if best is not None else float('inf')
+    for step in range(config.warmup_steps):
         shift=int(rng.integers(1,len(x)))
         losses=_losses(model,x,y,shift)
-        objective=losses.mean()+config.variance_weight*_collapse(model,x,y,0.1)
+        objective=losses.mean()+config.variance_weight*_collapse(model,x,y,0.25)
         optimizer.zero_grad(set_to_none=True)
         objective.backward()
         nn.utils.clip_grad_norm_(model.parameters(),1.)
         optimizer.step()
+        if (step+1)%5==0 or step+1==config.warmup_steps:
+            with torch.no_grad():
+                spread=model.min_spread(x,y)
+                score=float(_losses(model,x,y,1).mean())
+            if (np.isfinite(score) and spread>=config.min_spread
+                and score < best_score):
+                best_score=score
+                best=copy.deepcopy(model.state_dict())
+    if best is None:
+        raise RuntimeError('bootstrap hypotheses collapsed before any valid checkpoint')
+    model.load_state_dict(best)
     model.eval()
     return model
 
@@ -438,7 +466,7 @@ def fit_feedback(warmup:TokenKANSystem,x:TensorStates,y:TensorStates,
             if encoder_only:
                 loss=(loss + config.preservation_weight*
                       (F.mse_loss(model.x_encoder(x),anchor_x)+F.mse_loss(model.y_encoder(y),anchor_y))/2
-                      +config.variance_weight*_collapse(model,x,y,0.10))
+                      +config.variance_weight*_collapse(model,x,y,0.25))
             optimizer.zero_grad(set_to_none=True)
             loss.backward()
             nn.utils.clip_grad_norm_(params,1.)
@@ -448,7 +476,8 @@ def fit_feedback(warmup:TokenKANSystem,x:TensorStates,y:TensorStates,
         candidate_spread=model.min_spread(cx,cy)
         if (np.isfinite(candidate_nll) and np.isfinite(candidate_spread)
             and candidate_nll<=base_nll+config.tolerance
-            and candidate_spread >= min(config.min_spread,old_spread*.5)):
+            and candidate_spread >= config.min_spread
+            and candidate_spread >= old_spread*.5):
             accepted+=1
             if encoder_only: model.encoder_version+=1
             else: model.hypothesis_version+=1

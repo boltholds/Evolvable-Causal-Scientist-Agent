@@ -252,3 +252,25 @@ def test_warmup_only_whitening_rescues_clustered_full_embeddings():
     # A different evaluation distribution cannot change training moments.
     model(state.shifted(1))
     assert torch.equal(model.warmup_center,center)
+
+
+def test_attention_retains_content_when_special_token_is_shared():
+    """Prevent the real-model bug: selecting a common token removes all variance."""
+    torch.manual_seed(21)
+    n,width=16,96
+    token=torch.zeros((n,3,width))
+    token[:,0,10]=torch.linspace(-1,1,n)
+    token[:,1,20]=torch.linspace(.1,.8,n)
+    token[:,2,30]=12.  # identical strongly activated common token
+    mask=torch.ones((n,3),dtype=torch.bool)
+    states=TensorStates(token,mask,torch.zeros((n,width)))
+    model=StateProjector(StateArm.TOKEN_ATTENTION,width)
+    with torch.no_grad():
+        model.token_attention.weight.zero_()
+        model.token_attention.weight[0,30]=6.
+    # Bounded attention retains nonzero probability for content tokens.
+    masses=model.weights(states)
+    assert float(masses[:,:2].detach().sum(dim=1).min()) > .01
+    model.fit_warmup_normalizer(states)
+    projected=model(states).detach()
+    assert float(projected.std(0,unbiased=False).mean()) > .02
