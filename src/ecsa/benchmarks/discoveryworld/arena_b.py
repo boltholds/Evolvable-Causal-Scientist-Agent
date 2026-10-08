@@ -41,6 +41,12 @@ class ArenaBResult:
     applicability_brier: float = 0.0
     model_ready_schema_brier: float = 0.0
     model_ready_applicability_brier: float = 0.0
+    lifted_eig_count: int = 0
+    lifted_hypothesis_count: int = 0
+    lifted_prediction_count: int = 0
+    lifted_brier: float = 0.0
+    lifted_ready_brier: float = 0.0
+    lifted_ready_schema_brier: float = 0.0
 
 
 def _wire(value):
@@ -82,6 +88,7 @@ def run_autonomous_episode(
     max_ground_actions: int = 64,
     use_affordance_scoring: bool = True,
     use_applicability_selection: bool = True,
+    use_lifted_selection: bool = True,
 ) -> ArenaBResult:
     if scenario != "Reactor Lab" or difficulty != "Normal":
         raise ValueError(
@@ -106,6 +113,7 @@ def run_autonomous_episode(
         experiments=ContractExperimentCoordinator(
             use_affordance_scoring=use_affordance_scoring,
             use_applicability_selection=use_applicability_selection,
+            use_lifted_selection=use_lifted_selection,
         ),
         perception=perception,
     )
@@ -124,6 +132,11 @@ def run_autonomous_episode(
     successes = 0
     applicability_eig_count = 0
     contract_eig_count = 0
+    lifted_eig_count = 0
+    lifted_prediction_count = 0
+    lifted_brier_total = 0.0
+    ready_lifted_brier_total = 0.0
+    ready_lifted_schema_brier_total = 0.0
     action_signatures: set[tuple[str, int]] = set()
     evidence_ids: set[str] = set()
     model_prediction_count = 0
@@ -153,11 +166,31 @@ def run_autonomous_episode(
             experiment.action.schema_id, len(experiment.action.arguments),
         )
         likelihood = schema_probability
+        lifted_likelihood = schema_probability
+        before_perception = perception.perceive(before)
+        lifted_belief = scientist.experiments.lifted_applicability.belief(
+            experiment.action.schema_id, len(experiment.action.arguments),
+        )
+        if lifted_belief is not None:
+            prospective_lifted = scientist.experiments.lifted_applicability.predictions(
+                lifted_belief,
+                experiment_id=experiment.experiment_id,
+                action=experiment.action,
+                before=before_perception,
+            )
+            lifted_probabilities = {
+                prediction.theory_id: prediction.probability(("success",))
+                for prediction in prospective_lifted
+            }
+            lifted_likelihood = sum(
+                mass * lifted_probabilities[theory_id]
+                for theory_id, mass in lifted_belief.posterior.probabilities
+            )
+            lifted_prediction_count += 1
         active_belief = scientist.experiments.applicability.belief(
             experiment.action.schema_id, len(experiment.action.arguments),
         )
         if active_belief is not None:
-            before_perception = perception.perceive(before)
             prospective = scientist.experiments.applicability.predictions(
                 active_belief,
                 experiment_id=experiment.experiment_id,
@@ -177,6 +210,7 @@ def run_autonomous_episode(
         selection_mode = scientist.experiments.last_selection_mode.value
         applicability_eig_count += int(selection_mode == "applicability_eig")
         contract_eig_count += int(selection_mode == "world_contract_eig")
+        lifted_eig_count += int(selection_mode == "lifted_applicability_eig")
         action_signatures.add((experiment.action.schema_id, len(experiment.action.arguments)))
         outcome = environment.execute_raw_action(
             experiment.action
@@ -201,6 +235,11 @@ def run_autonomous_episode(
         model_loss = (likelihood - observation_outcome) ** 2
         schema_brier_total += baseline_loss
         applicability_brier_total += model_loss
+        lifted_loss = (lifted_likelihood - observation_outcome) ** 2
+        lifted_brier_total += lifted_loss
+        if lifted_belief is not None:
+            ready_lifted_brier_total += lifted_loss
+            ready_lifted_schema_brier_total += baseline_loss
         if active_belief is not None:
             ready_schema_brier_total += baseline_loss
             ready_applicability_brier_total += model_loss
@@ -212,6 +251,7 @@ def run_autonomous_episode(
                 "selection_mode": selection_mode,
                 "schema_success_probability": schema_probability,
                 "applicability_success_probability": likelihood,
+                "lifted_success_probability": lifted_likelihood,
                 "before_id": before.observation_id,
                 "action": {
                     "schema_id": experiment.action.schema_id,
@@ -252,6 +292,16 @@ def run_autonomous_episode(
         model_prediction_count=model_prediction_count,
         schema_brier=schema_brier_total / max(1, transition_count),
         applicability_brier=applicability_brier_total / max(1, transition_count),
+        lifted_brier=lifted_brier_total / max(1, transition_count),
+        lifted_prediction_count=lifted_prediction_count,
+        lifted_ready_brier=ready_lifted_brier_total / max(1, lifted_prediction_count),
+        lifted_ready_schema_brier=ready_lifted_schema_brier_total / max(1, lifted_prediction_count),
+        lifted_eig_count=lifted_eig_count,
+        lifted_hypothesis_count=sum(
+            len(belief.hypotheses)
+            for schema_id, arity in sorted(action_signatures)
+            if (belief := scientist.experiments.lifted_applicability.belief(schema_id, arity)) is not None
+        ),
         model_ready_schema_brier=ready_schema_brier_total / max(1, model_prediction_count),
         model_ready_applicability_brier=ready_applicability_brier_total / max(1, model_prediction_count),
         applicability_hypothesis_count=sum(
