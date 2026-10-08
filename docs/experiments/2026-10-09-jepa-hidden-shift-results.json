@@ -1,0 +1,1079 @@
+{
+  "protocol": "action_jepa_hidden_shift_v1",
+  "method": "Full fixed-geometry synthetic CPU reference, shift after 80 of 160 monitoring actions",
+  "baseline_git_head": "fa5666ad3efcf37dc861f754dd6a548f75593611",
+  "code_sha256": {
+    "src/ecsa/experimental/jepa_shift_arena.py": "121a2def287dbe894be96fb590d03ae9f749fbe85e22c86e067ead3440ee74d9",
+    "src/ecsa/experimental/jepa_shift_detection.py": "ecf0d5469f89689d5b225b187d8c04d0e204a51ba0df485fee40473330ff7fe9",
+    "src/ecsa/experimental/jepa_shift_scientist.py": "4dabc1bb7a0331779e1e6205eb2f5563dbf0b1a8d77f8f446da7e55328bd5fac",
+    "src/ecsa/experimental/jepa_shift_world.py": "fd984a0b8cb02c932e6c9e5c08faa0a2e6a275f1c039c34580e9456af11aab12"
+  },
+  "train_count": 2048,
+  "calibration_count": 1024,
+  "heldout_count": 256,
+  "train_steps_per_jepa": 700,
+  "post_train_updates": 0,
+  "noise_std": 0.16,
+  "monitor_action_count": 160,
+  "change_after": 80,
+  "scientific_claim": "Action-order effect after controlled interventions only; no unique causal DAG identified",
+  "groups": {
+    "development_seeds_0_8": {
+      "seeds": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "control_results": {
+        "jepa": {
+          "postchange_alerts": 7,
+          "early_alerts": 1,
+          "no_alerts": 1,
+          "placebo_alarms": 1,
+          "confirmed_postchange_order_effect": 7,
+          "confirmed_placebo_order_effect": 0,
+          "median_alert_delay_actions_conditional": 5,
+          "median_extra_intervention_actions": 672
+        },
+        "shuffled_actions": {
+          "postchange_alerts": 0,
+          "early_alerts": 0,
+          "no_alerts": 9,
+          "placebo_alarms": 0,
+          "confirmed_postchange_order_effect": 0,
+          "confirmed_placebo_order_effect": 0,
+          "median_alert_delay_actions_conditional": null,
+          "median_extra_intervention_actions": 0
+        },
+        "random_ridge": {
+          "postchange_alerts": 3,
+          "early_alerts": 0,
+          "no_alerts": 6,
+          "placebo_alarms": 0,
+          "confirmed_postchange_order_effect": 3,
+          "confirmed_placebo_order_effect": 0,
+          "median_alert_delay_actions_conditional": 24,
+          "median_extra_intervention_actions": 0
+        },
+        "raw_ridge": {
+          "postchange_alerts": 9,
+          "early_alerts": 0,
+          "no_alerts": 0,
+          "placebo_alarms": 0,
+          "confirmed_postchange_order_effect": 9,
+          "confirmed_placebo_order_effect": 0,
+          "median_alert_delay_actions_conditional": 21,
+          "median_extra_intervention_actions": 672
+        },
+        "delta_template": {
+          "postchange_alerts": 0,
+          "early_alerts": 0,
+          "no_alerts": 9,
+          "placebo_alarms": 0,
+          "confirmed_postchange_order_effect": 0,
+          "confirmed_placebo_order_effect": 0,
+          "median_alert_delay_actions_conditional": null,
+          "median_extra_intervention_actions": 0
+        },
+        "symbolic": {
+          "postchange_alerts": 9,
+          "early_alerts": 0,
+          "no_alerts": 0,
+          "placebo_alarms": 0,
+          "confirmed_postchange_order_effect": 9,
+          "confirmed_placebo_order_effect": 0,
+          "median_alert_delay_actions_conditional": 16,
+          "median_extra_intervention_actions": 4032
+        }
+      }
+    },
+    "heldout_seeds_9_12": {
+      "seeds": [
+        9,
+        10,
+        11,
+        12
+      ],
+      "control_results": {
+        "jepa": {
+          "postchange_alerts": 3,
+          "early_alerts": 0,
+          "no_alerts": 1,
+          "placebo_alarms": 0,
+          "confirmed_postchange_order_effect": 3,
+          "confirmed_placebo_order_effect": 0,
+          "median_alert_delay_actions_conditional": 21,
+          "median_extra_intervention_actions": 672.0
+        },
+        "shuffled_actions": {
+          "postchange_alerts": 0,
+          "early_alerts": 0,
+          "no_alerts": 4,
+          "placebo_alarms": 0,
+          "confirmed_postchange_order_effect": 0,
+          "confirmed_placebo_order_effect": 0,
+          "median_alert_delay_actions_conditional": null,
+          "median_extra_intervention_actions": 0.0
+        },
+        "random_ridge": {
+          "postchange_alerts": 3,
+          "early_alerts": 0,
+          "no_alerts": 1,
+          "placebo_alarms": 0,
+          "confirmed_postchange_order_effect": 3,
+          "confirmed_placebo_order_effect": 0,
+          "median_alert_delay_actions_conditional": 67,
+          "median_extra_intervention_actions": 672.0
+        },
+        "raw_ridge": {
+          "postchange_alerts": 4,
+          "early_alerts": 0,
+          "no_alerts": 0,
+          "placebo_alarms": 0,
+          "confirmed_postchange_order_effect": 4,
+          "confirmed_placebo_order_effect": 0,
+          "median_alert_delay_actions_conditional": 18.5,
+          "median_extra_intervention_actions": 672.0
+        },
+        "delta_template": {
+          "postchange_alerts": 0,
+          "early_alerts": 0,
+          "no_alerts": 4,
+          "placebo_alarms": 0,
+          "confirmed_postchange_order_effect": 0,
+          "confirmed_placebo_order_effect": 0,
+          "median_alert_delay_actions_conditional": null,
+          "median_extra_intervention_actions": 0.0
+        },
+        "symbolic": {
+          "postchange_alerts": 4,
+          "early_alerts": 0,
+          "no_alerts": 0,
+          "placebo_alarms": 0,
+          "confirmed_postchange_order_effect": 4,
+          "confirmed_placebo_order_effect": 0,
+          "median_alert_delay_actions_conditional": 16.0,
+          "median_extra_intervention_actions": 4032.0
+        }
+      }
+    },
+    "all_seeds_0_12": {
+      "seeds": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12
+      ],
+      "control_results": {
+        "jepa": {
+          "postchange_alerts": 10,
+          "early_alerts": 1,
+          "no_alerts": 2,
+          "placebo_alarms": 1,
+          "confirmed_postchange_order_effect": 10,
+          "confirmed_placebo_order_effect": 0,
+          "median_alert_delay_actions_conditional": 8.5,
+          "median_extra_intervention_actions": 672
+        },
+        "shuffled_actions": {
+          "postchange_alerts": 0,
+          "early_alerts": 0,
+          "no_alerts": 13,
+          "placebo_alarms": 0,
+          "confirmed_postchange_order_effect": 0,
+          "confirmed_placebo_order_effect": 0,
+          "median_alert_delay_actions_conditional": null,
+          "median_extra_intervention_actions": 0
+        },
+        "random_ridge": {
+          "postchange_alerts": 6,
+          "early_alerts": 0,
+          "no_alerts": 7,
+          "placebo_alarms": 0,
+          "confirmed_postchange_order_effect": 6,
+          "confirmed_placebo_order_effect": 0,
+          "median_alert_delay_actions_conditional": 26.0,
+          "median_extra_intervention_actions": 0
+        },
+        "raw_ridge": {
+          "postchange_alerts": 13,
+          "early_alerts": 0,
+          "no_alerts": 0,
+          "placebo_alarms": 0,
+          "confirmed_postchange_order_effect": 13,
+          "confirmed_placebo_order_effect": 0,
+          "median_alert_delay_actions_conditional": 19,
+          "median_extra_intervention_actions": 672
+        },
+        "delta_template": {
+          "postchange_alerts": 0,
+          "early_alerts": 0,
+          "no_alerts": 13,
+          "placebo_alarms": 0,
+          "confirmed_postchange_order_effect": 0,
+          "confirmed_placebo_order_effect": 0,
+          "median_alert_delay_actions_conditional": null,
+          "median_extra_intervention_actions": 0
+        },
+        "symbolic": {
+          "postchange_alerts": 13,
+          "early_alerts": 0,
+          "no_alerts": 0,
+          "placebo_alarms": 0,
+          "confirmed_postchange_order_effect": 13,
+          "confirmed_placebo_order_effect": 0,
+          "median_alert_delay_actions_conditional": 16,
+          "median_extra_intervention_actions": 4032
+        }
+      }
+    }
+  },
+  "by_seed": [
+    {
+      "seed": 0,
+      "jepa_base_action_choice_accuracy": 0.95703125,
+      "results": {
+        "jepa": {
+          "alarm_index": 83,
+          "delay_actions": 4,
+          "null_alarm_index": null,
+          "selected_pair": [
+            "pulse",
+            "flip"
+          ],
+          "confirmed_order_effect": true,
+          "extra_intervention_actions": 672
+        },
+        "shuffled_actions": {
+          "alarm_index": null,
+          "delay_actions": null,
+          "null_alarm_index": null,
+          "selected_pair": null,
+          "confirmed_order_effect": null,
+          "extra_intervention_actions": 0
+        },
+        "random_ridge": {
+          "alarm_index": null,
+          "delay_actions": null,
+          "null_alarm_index": null,
+          "selected_pair": null,
+          "confirmed_order_effect": null,
+          "extra_intervention_actions": 0
+        },
+        "raw_ridge": {
+          "alarm_index": 83,
+          "delay_actions": 4,
+          "null_alarm_index": null,
+          "selected_pair": [
+            "pulse",
+            "flip"
+          ],
+          "confirmed_order_effect": true,
+          "extra_intervention_actions": 672
+        },
+        "delta_template": {
+          "alarm_index": null,
+          "delay_actions": null,
+          "null_alarm_index": null,
+          "selected_pair": null,
+          "confirmed_order_effect": null,
+          "extra_intervention_actions": 0
+        },
+        "symbolic": {
+          "alarm_index": 95,
+          "delay_actions": 16,
+          "null_alarm_index": null,
+          "selected_pair": [
+            "pulse",
+            "flip"
+          ],
+          "confirmed_order_effect": true,
+          "extra_intervention_actions": 4032
+        }
+      }
+    },
+    {
+      "seed": 1,
+      "jepa_base_action_choice_accuracy": 0.98828125,
+      "results": {
+        "jepa": {
+          "alarm_index": 82,
+          "delay_actions": 3,
+          "null_alarm_index": null,
+          "selected_pair": [
+            "pulse",
+            "flip"
+          ],
+          "confirmed_order_effect": true,
+          "extra_intervention_actions": 672
+        },
+        "shuffled_actions": {
+          "alarm_index": null,
+          "delay_actions": null,
+          "null_alarm_index": null,
+          "selected_pair": null,
+          "confirmed_order_effect": null,
+          "extra_intervention_actions": 0
+        },
+        "random_ridge": {
+          "alarm_index": 84,
+          "delay_actions": 5,
+          "null_alarm_index": null,
+          "selected_pair": [
+            "pulse",
+            "flip"
+          ],
+          "confirmed_order_effect": true,
+          "extra_intervention_actions": 672
+        },
+        "raw_ridge": {
+          "alarm_index": 82,
+          "delay_actions": 3,
+          "null_alarm_index": null,
+          "selected_pair": [
+            "pulse",
+            "flip"
+          ],
+          "confirmed_order_effect": true,
+          "extra_intervention_actions": 672
+        },
+        "delta_template": {
+          "alarm_index": null,
+          "delay_actions": null,
+          "null_alarm_index": null,
+          "selected_pair": null,
+          "confirmed_order_effect": null,
+          "extra_intervention_actions": 0
+        },
+        "symbolic": {
+          "alarm_index": 95,
+          "delay_actions": 16,
+          "null_alarm_index": null,
+          "selected_pair": [
+            "pulse",
+            "flip"
+          ],
+          "confirmed_order_effect": true,
+          "extra_intervention_actions": 4032
+        }
+      }
+    },
+    {
+      "seed": 2,
+      "jepa_base_action_choice_accuracy": 0.986328125,
+      "results": {
+        "jepa": {
+          "alarm_index": 85,
+          "delay_actions": 6,
+          "null_alarm_index": null,
+          "selected_pair": [
+            "pulse",
+            "flip"
+          ],
+          "confirmed_order_effect": true,
+          "extra_intervention_actions": 672
+        },
+        "shuffled_actions": {
+          "alarm_index": null,
+          "delay_actions": null,
+          "null_alarm_index": null,
+          "selected_pair": null,
+          "confirmed_order_effect": null,
+          "extra_intervention_actions": 0
+        },
+        "random_ridge": {
+          "alarm_index": null,
+          "delay_actions": null,
+          "null_alarm_index": null,
+          "selected_pair": null,
+          "confirmed_order_effect": null,
+          "extra_intervention_actions": 0
+        },
+        "raw_ridge": {
+          "alarm_index": 100,
+          "delay_actions": 21,
+          "null_alarm_index": null,
+          "selected_pair": [
+            "pulse",
+            "flip"
+          ],
+          "confirmed_order_effect": true,
+          "extra_intervention_actions": 672
+        },
+        "delta_template": {
+          "alarm_index": null,
+          "delay_actions": null,
+          "null_alarm_index": null,
+          "selected_pair": null,
+          "confirmed_order_effect": null,
+          "extra_intervention_actions": 0
+        },
+        "symbolic": {
+          "alarm_index": 95,
+          "delay_actions": 16,
+          "null_alarm_index": null,
+          "selected_pair": [
+            "pulse",
+            "flip"
+          ],
+          "confirmed_order_effect": true,
+          "extra_intervention_actions": 4032
+        }
+      }
+    },
+    {
+      "seed": 3,
+      "jepa_base_action_choice_accuracy": 0.990234375,
+      "results": {
+        "jepa": {
+          "alarm_index": 81,
+          "delay_actions": 2,
+          "null_alarm_index": null,
+          "selected_pair": [
+            "pulse",
+            "flip"
+          ],
+          "confirmed_order_effect": true,
+          "extra_intervention_actions": 672
+        },
+        "shuffled_actions": {
+          "alarm_index": null,
+          "delay_actions": null,
+          "null_alarm_index": null,
+          "selected_pair": null,
+          "confirmed_order_effect": null,
+          "extra_intervention_actions": 0
+        },
+        "random_ridge": {
+          "alarm_index": 107,
+          "delay_actions": 28,
+          "null_alarm_index": null,
+          "selected_pair": [
+            "pulse",
+            "flip"
+          ],
+          "confirmed_order_effect": true,
+          "extra_intervention_actions": 672
+        },
+        "raw_ridge": {
+          "alarm_index": 81,
+          "delay_actions": 2,
+          "null_alarm_index": null,
+          "selected_pair": [
+            "pulse",
+            "flip"
+          ],
+          "confirmed_order_effect": true,
+          "extra_intervention_actions": 672
+        },
+        "delta_template": {
+          "alarm_index": null,
+          "delay_actions": null,
+          "null_alarm_index": null,
+          "selected_pair": null,
+          "confirmed_order_effect": null,
+          "extra_intervention_actions": 0
+        },
+        "symbolic": {
+          "alarm_index": 95,
+          "delay_actions": 16,
+          "null_alarm_index": null,
+          "selected_pair": [
+            "pulse",
+            "flip"
+          ],
+          "confirmed_order_effect": true,
+          "extra_intervention_actions": 4032
+        }
+      }
+    },
+    {
+      "seed": 4,
+      "jepa_base_action_choice_accuracy": 0.982421875,
+      "results": {
+        "jepa": {
+          "alarm_index": 94,
+          "delay_actions": 15,
+          "null_alarm_index": null,
+          "selected_pair": [
+            "pulse",
+            "flip"
+          ],
+          "confirmed_order_effect": true,
+          "extra_intervention_actions": 672
+        },
+        "shuffled_actions": {
+          "alarm_index": null,
+          "delay_actions": null,
+          "null_alarm_index": null,
+          "selected_pair": null,
+          "confirmed_order_effect": null,
+          "extra_intervention_actions": 0
+        },
+        "random_ridge": {
+          "alarm_index": null,
+          "delay_actions": null,
+          "null_alarm_index": null,
+          "selected_pair": null,
+          "confirmed_order_effect": null,
+          "extra_intervention_actions": 0
+        },
+        "raw_ridge": {
+          "alarm_index": 106,
+          "delay_actions": 27,
+          "null_alarm_index": null,
+          "selected_pair": [
+            "pulse",
+            "flip"
+          ],
+          "confirmed_order_effect": true,
+          "extra_intervention_actions": 672
+        },
+        "delta_template": {
+          "alarm_index": null,
+          "delay_actions": null,
+          "null_alarm_index": null,
+          "selected_pair": null,
+          "confirmed_order_effect": null,
+          "extra_intervention_actions": 0
+        },
+        "symbolic": {
+          "alarm_index": 95,
+          "delay_actions": 16,
+          "null_alarm_index": null,
+          "selected_pair": [
+            "pulse",
+            "flip"
+          ],
+          "confirmed_order_effect": true,
+          "extra_intervention_actions": 4032
+        }
+      }
+    },
+    {
+      "seed": 5,
+      "jepa_base_action_choice_accuracy": 0.986328125,
+      "results": {
+        "jepa": {
+          "alarm_index": 84,
+          "delay_actions": 5,
+          "null_alarm_index": null,
+          "selected_pair": [
+            "pulse",
+            "flip"
+          ],
+          "confirmed_order_effect": true,
+          "extra_intervention_actions": 672
+        },
+        "shuffled_actions": {
+          "alarm_index": null,
+          "delay_actions": null,
+          "null_alarm_index": null,
+          "selected_pair": null,
+          "confirmed_order_effect": null,
+          "extra_intervention_actions": 0
+        },
+        "random_ridge": {
+          "alarm_index": 103,
+          "delay_actions": 24,
+          "null_alarm_index": null,
+          "selected_pair": [
+            "pulse",
+            "flip"
+          ],
+          "confirmed_order_effect": true,
+          "extra_intervention_actions": 672
+        },
+        "raw_ridge": {
+          "alarm_index": 103,
+          "delay_actions": 24,
+          "null_alarm_index": null,
+          "selected_pair": [
+            "pulse",
+            "flip"
+          ],
+          "confirmed_order_effect": true,
+          "extra_intervention_actions": 672
+        },
+        "delta_template": {
+          "alarm_index": null,
+          "delay_actions": null,
+          "null_alarm_index": null,
+          "selected_pair": null,
+          "confirmed_order_effect": null,
+          "extra_intervention_actions": 0
+        },
+        "symbolic": {
+          "alarm_index": 95,
+          "delay_actions": 16,
+          "null_alarm_index": null,
+          "selected_pair": [
+            "pulse",
+            "flip"
+          ],
+          "confirmed_order_effect": true,
+          "extra_intervention_actions": 4032
+        }
+      }
+    },
+    {
+      "seed": 6,
+      "jepa_base_action_choice_accuracy": 0.978515625,
+      "results": {
+        "jepa": {
+          "alarm_index": 91,
+          "delay_actions": 12,
+          "null_alarm_index": null,
+          "selected_pair": [
+            "pulse",
+            "flip"
+          ],
+          "confirmed_order_effect": true,
+          "extra_intervention_actions": 672
+        },
+        "shuffled_actions": {
+          "alarm_index": null,
+          "delay_actions": null,
+          "null_alarm_index": null,
+          "selected_pair": null,
+          "confirmed_order_effect": null,
+          "extra_intervention_actions": 0
+        },
+        "random_ridge": {
+          "alarm_index": null,
+          "delay_actions": null,
+          "null_alarm_index": null,
+          "selected_pair": null,
+          "confirmed_order_effect": null,
+          "extra_intervention_actions": 0
+        },
+        "raw_ridge": {
+          "alarm_index": 110,
+          "delay_actions": 31,
+          "null_alarm_index": null,
+          "selected_pair": [
+            "pulse",
+            "flip"
+          ],
+          "confirmed_order_effect": true,
+          "extra_intervention_actions": 672
+        },
+        "delta_template": {
+          "alarm_index": null,
+          "delay_actions": null,
+          "null_alarm_index": null,
+          "selected_pair": null,
+          "confirmed_order_effect": null,
+          "extra_intervention_actions": 0
+        },
+        "symbolic": {
+          "alarm_index": 95,
+          "delay_actions": 16,
+          "null_alarm_index": null,
+          "selected_pair": [
+            "pulse",
+            "flip"
+          ],
+          "confirmed_order_effect": true,
+          "extra_intervention_actions": 4032
+        }
+      }
+    },
+    {
+      "seed": 7,
+      "jepa_base_action_choice_accuracy": 0.955078125,
+      "results": {
+        "jepa": {
+          "alarm_index": null,
+          "delay_actions": null,
+          "null_alarm_index": null,
+          "selected_pair": null,
+          "confirmed_order_effect": null,
+          "extra_intervention_actions": 0
+        },
+        "shuffled_actions": {
+          "alarm_index": null,
+          "delay_actions": null,
+          "null_alarm_index": null,
+          "selected_pair": null,
+          "confirmed_order_effect": null,
+          "extra_intervention_actions": 0
+        },
+        "random_ridge": {
+          "alarm_index": null,
+          "delay_actions": null,
+          "null_alarm_index": null,
+          "selected_pair": null,
+          "confirmed_order_effect": null,
+          "extra_intervention_actions": 0
+        },
+        "raw_ridge": {
+          "alarm_index": 103,
+          "delay_actions": 24,
+          "null_alarm_index": null,
+          "selected_pair": [
+            "pulse",
+            "flip"
+          ],
+          "confirmed_order_effect": true,
+          "extra_intervention_actions": 672
+        },
+        "delta_template": {
+          "alarm_index": null,
+          "delay_actions": null,
+          "null_alarm_index": null,
+          "selected_pair": null,
+          "confirmed_order_effect": null,
+          "extra_intervention_actions": 0
+        },
+        "symbolic": {
+          "alarm_index": 95,
+          "delay_actions": 16,
+          "null_alarm_index": null,
+          "selected_pair": [
+            "pulse",
+            "flip"
+          ],
+          "confirmed_order_effect": true,
+          "extra_intervention_actions": 4032
+        }
+      }
+    },
+    {
+      "seed": 8,
+      "jepa_base_action_choice_accuracy": 0.98046875,
+      "results": {
+        "jepa": {
+          "alarm_index": 30,
+          "delay_actions": null,
+          "null_alarm_index": 30,
+          "selected_pair": [
+            "flip",
+            "wait"
+          ],
+          "confirmed_order_effect": false,
+          "extra_intervention_actions": 672
+        },
+        "shuffled_actions": {
+          "alarm_index": null,
+          "delay_actions": null,
+          "null_alarm_index": null,
+          "selected_pair": null,
+          "confirmed_order_effect": null,
+          "extra_intervention_actions": 0
+        },
+        "random_ridge": {
+          "alarm_index": null,
+          "delay_actions": null,
+          "null_alarm_index": null,
+          "selected_pair": null,
+          "confirmed_order_effect": null,
+          "extra_intervention_actions": 0
+        },
+        "raw_ridge": {
+          "alarm_index": 89,
+          "delay_actions": 10,
+          "null_alarm_index": null,
+          "selected_pair": [
+            "pulse",
+            "flip"
+          ],
+          "confirmed_order_effect": true,
+          "extra_intervention_actions": 672
+        },
+        "delta_template": {
+          "alarm_index": null,
+          "delay_actions": null,
+          "null_alarm_index": null,
+          "selected_pair": null,
+          "confirmed_order_effect": null,
+          "extra_intervention_actions": 0
+        },
+        "symbolic": {
+          "alarm_index": 95,
+          "delay_actions": 16,
+          "null_alarm_index": null,
+          "selected_pair": [
+            "pulse",
+            "flip"
+          ],
+          "confirmed_order_effect": true,
+          "extra_intervention_actions": 4032
+        }
+      }
+    },
+    {
+      "seed": 9,
+      "jepa_base_action_choice_accuracy": 0.982421875,
+      "results": {
+        "jepa": {
+          "alarm_index": null,
+          "delay_actions": null,
+          "null_alarm_index": null,
+          "selected_pair": null,
+          "confirmed_order_effect": null,
+          "extra_intervention_actions": 0
+        },
+        "shuffled_actions": {
+          "alarm_index": null,
+          "delay_actions": null,
+          "null_alarm_index": null,
+          "selected_pair": null,
+          "confirmed_order_effect": null,
+          "extra_intervention_actions": 0
+        },
+        "random_ridge": {
+          "alarm_index": null,
+          "delay_actions": null,
+          "null_alarm_index": null,
+          "selected_pair": null,
+          "confirmed_order_effect": null,
+          "extra_intervention_actions": 0
+        },
+        "raw_ridge": {
+          "alarm_index": 94,
+          "delay_actions": 15,
+          "null_alarm_index": null,
+          "selected_pair": [
+            "pulse",
+            "flip"
+          ],
+          "confirmed_order_effect": true,
+          "extra_intervention_actions": 672
+        },
+        "delta_template": {
+          "alarm_index": null,
+          "delay_actions": null,
+          "null_alarm_index": null,
+          "selected_pair": null,
+          "confirmed_order_effect": null,
+          "extra_intervention_actions": 0
+        },
+        "symbolic": {
+          "alarm_index": 95,
+          "delay_actions": 16,
+          "null_alarm_index": null,
+          "selected_pair": [
+            "pulse",
+            "flip"
+          ],
+          "confirmed_order_effect": true,
+          "extra_intervention_actions": 4032
+        }
+      }
+    },
+    {
+      "seed": 10,
+      "jepa_base_action_choice_accuracy": 0.984375,
+      "results": {
+        "jepa": {
+          "alarm_index": 109,
+          "delay_actions": 30,
+          "null_alarm_index": null,
+          "selected_pair": [
+            "pulse",
+            "flip"
+          ],
+          "confirmed_order_effect": true,
+          "extra_intervention_actions": 672
+        },
+        "shuffled_actions": {
+          "alarm_index": null,
+          "delay_actions": null,
+          "null_alarm_index": null,
+          "selected_pair": null,
+          "confirmed_order_effect": null,
+          "extra_intervention_actions": 0
+        },
+        "random_ridge": {
+          "alarm_index": 159,
+          "delay_actions": 80,
+          "null_alarm_index": null,
+          "selected_pair": [
+            "pulse",
+            "flip"
+          ],
+          "confirmed_order_effect": true,
+          "extra_intervention_actions": 672
+        },
+        "raw_ridge": {
+          "alarm_index": 97,
+          "delay_actions": 18,
+          "null_alarm_index": null,
+          "selected_pair": [
+            "pulse",
+            "flip"
+          ],
+          "confirmed_order_effect": true,
+          "extra_intervention_actions": 672
+        },
+        "delta_template": {
+          "alarm_index": null,
+          "delay_actions": null,
+          "null_alarm_index": null,
+          "selected_pair": null,
+          "confirmed_order_effect": null,
+          "extra_intervention_actions": 0
+        },
+        "symbolic": {
+          "alarm_index": 95,
+          "delay_actions": 16,
+          "null_alarm_index": null,
+          "selected_pair": [
+            "pulse",
+            "flip"
+          ],
+          "confirmed_order_effect": true,
+          "extra_intervention_actions": 4032
+        }
+      }
+    },
+    {
+      "seed": 11,
+      "jepa_base_action_choice_accuracy": 0.9921875,
+      "results": {
+        "jepa": {
+          "alarm_index": 100,
+          "delay_actions": 21,
+          "null_alarm_index": null,
+          "selected_pair": [
+            "pulse",
+            "flip"
+          ],
+          "confirmed_order_effect": true,
+          "extra_intervention_actions": 672
+        },
+        "shuffled_actions": {
+          "alarm_index": null,
+          "delay_actions": null,
+          "null_alarm_index": null,
+          "selected_pair": null,
+          "confirmed_order_effect": null,
+          "extra_intervention_actions": 0
+        },
+        "random_ridge": {
+          "alarm_index": 146,
+          "delay_actions": 67,
+          "null_alarm_index": null,
+          "selected_pair": [
+            "pulse",
+            "flip"
+          ],
+          "confirmed_order_effect": true,
+          "extra_intervention_actions": 672
+        },
+        "raw_ridge": {
+          "alarm_index": 103,
+          "delay_actions": 24,
+          "null_alarm_index": null,
+          "selected_pair": [
+            "pulse",
+            "flip"
+          ],
+          "confirmed_order_effect": true,
+          "extra_intervention_actions": 672
+        },
+        "delta_template": {
+          "alarm_index": null,
+          "delay_actions": null,
+          "null_alarm_index": null,
+          "selected_pair": null,
+          "confirmed_order_effect": null,
+          "extra_intervention_actions": 0
+        },
+        "symbolic": {
+          "alarm_index": 95,
+          "delay_actions": 16,
+          "null_alarm_index": null,
+          "selected_pair": [
+            "pulse",
+            "flip"
+          ],
+          "confirmed_order_effect": true,
+          "extra_intervention_actions": 4032
+        }
+      }
+    },
+    {
+      "seed": 12,
+      "jepa_base_action_choice_accuracy": 0.990234375,
+      "results": {
+        "jepa": {
+          "alarm_index": 90,
+          "delay_actions": 11,
+          "null_alarm_index": null,
+          "selected_pair": [
+            "pulse",
+            "flip"
+          ],
+          "confirmed_order_effect": true,
+          "extra_intervention_actions": 672
+        },
+        "shuffled_actions": {
+          "alarm_index": null,
+          "delay_actions": null,
+          "null_alarm_index": null,
+          "selected_pair": null,
+          "confirmed_order_effect": null,
+          "extra_intervention_actions": 0
+        },
+        "random_ridge": {
+          "alarm_index": 99,
+          "delay_actions": 20,
+          "null_alarm_index": null,
+          "selected_pair": [
+            "pulse",
+            "flip"
+          ],
+          "confirmed_order_effect": true,
+          "extra_intervention_actions": 672
+        },
+        "raw_ridge": {
+          "alarm_index": 98,
+          "delay_actions": 19,
+          "null_alarm_index": null,
+          "selected_pair": [
+            "pulse",
+            "flip"
+          ],
+          "confirmed_order_effect": true,
+          "extra_intervention_actions": 672
+        },
+        "delta_template": {
+          "alarm_index": null,
+          "delay_actions": null,
+          "null_alarm_index": null,
+          "selected_pair": null,
+          "confirmed_order_effect": null,
+          "extra_intervention_actions": 0
+        },
+        "symbolic": {
+          "alarm_index": 95,
+          "delay_actions": 16,
+          "null_alarm_index": null,
+          "selected_pair": [
+            "pulse",
+            "flip"
+          ],
+          "confirmed_order_effect": true,
+          "extra_intervention_actions": 4032
+        }
+      }
+    }
+  ]
+}
