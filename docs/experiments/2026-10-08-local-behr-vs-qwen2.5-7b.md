@@ -30,6 +30,7 @@ a Windows \`.venv\` from the shared checkout.
 \`\`\`bash
 cd /mnt/c/Users/bolthold/Documents/Code/Evolvable-Causal-Scientist-Agent
 git status --short
+git switch main
 git pull --ff-only origin main
 python3.12 -m venv ~/.venvs/ecsa-behr
 source ~/.venvs/ecsa-behr/bin/activate
