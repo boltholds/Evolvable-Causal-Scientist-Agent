@@ -1,0 +1,431 @@
+{
+  "protocol": "action_jepa_commutator_v1",
+  "experimental_status": "exploratory; sensor noise=0.16 was selected after a pilot sweep; seeds 4-7 are confirmation-only runs without tuning",
+  "python": "3.13.5",
+  "torch": "2.10.0+cpu",
+  "numpy": "2.3.5",
+  "device": "cpu",
+  "noise_std": 0.16,
+  "train_count": 2048,
+  "heldout_count": 256,
+  "steps": 700,
+  "commutator_trials": 64,
+  "files": [
+    {
+      "name": "full-seed-0.json",
+      "sha256": "ad6a55826720e698c8890432c7da1214efec0fed1fc33cdb2d9f1e27dc25e94c"
+    },
+    {
+      "name": "full-seed-1.json",
+      "sha256": "30e7ed9abe8748982e59bd418d187d860d590d2ac398dcf109139dbcb37744e0"
+    },
+    {
+      "name": "full-seed-2.json",
+      "sha256": "b6c806b0cd6dab850db79cf662cd7b4bb8c9aaa8aaac28898d20f64db2414fcd"
+    },
+    {
+      "name": "full-seed-3.json",
+      "sha256": "8958cbbc4aed6dc45ffb674cb75731fcb65c532aa570e91619abb810fec14031"
+    },
+    {
+      "name": "full-seed-4.json",
+      "sha256": "469db5105df2dcab82bcd3311348c1f67d1d81f6fd56e1ddd9e92cf76b8890fa"
+    },
+    {
+      "name": "full-seed-5.json",
+      "sha256": "7bb6ecbf840c042bf8e53436d9205109f81cf38afdcadccf97782cec15515e01"
+    },
+    {
+      "name": "full-seed-6.json",
+      "sha256": "0f4daf0a4d4a025d3fd8b768af9999a810f1c152906fe1c3920cc92ae545fd9f"
+    },
+    {
+      "name": "full-seed-7.json",
+      "sha256": "da5be12353a9fbf44f633ed1e066abee9395a55249f48751c9887cee98af2c42"
+    }
+  ],
+  "by_group_mechanism": {
+    "exploratory:additive": {
+      "n_seeds": 4,
+      "mean_action_choice_accuracy": 0.98291,
+      "mean_shuffled_action_accuracy": 0.50879,
+      "mean_latent_spread": 0.6221,
+      "mean_effect_noise_ratio": 1.01,
+      "correct_learned_commutator": 4,
+      "correct_raw_commutator": 4,
+      "correct_random_commutator": 4,
+      "correct_scrambled_encoder_commutator": 4,
+      "active_pair_is_pulse_flip": 2,
+      "correct_active_predicted_commutator": 4
+    },
+    "exploratory:gated": {
+      "n_seeds": 4,
+      "mean_action_choice_accuracy": 0.91309,
+      "mean_shuffled_action_accuracy": 0.38525,
+      "mean_latent_spread": 0.6256,
+      "mean_effect_noise_ratio": 5.88,
+      "correct_learned_commutator": 4,
+      "correct_raw_commutator": 0,
+      "correct_random_commutator": 0,
+      "correct_scrambled_encoder_commutator": 4,
+      "active_pair_is_pulse_flip": 4,
+      "correct_active_predicted_commutator": 4
+    },
+    "confirmation:additive": {
+      "n_seeds": 4,
+      "mean_action_choice_accuracy": 0.97656,
+      "mean_shuffled_action_accuracy": 0.59375,
+      "mean_latent_spread": 0.6138,
+      "mean_effect_noise_ratio": 1.04,
+      "correct_learned_commutator": 4,
+      "correct_raw_commutator": 4,
+      "correct_random_commutator": 4,
+      "correct_scrambled_encoder_commutator": 4,
+      "active_pair_is_pulse_flip": 2,
+      "correct_active_predicted_commutator": 4
+    },
+    "confirmation:gated": {
+      "n_seeds": 4,
+      "mean_action_choice_accuracy": 0.91309,
+      "mean_shuffled_action_accuracy": 0.47021,
+      "mean_latent_spread": 0.6122,
+      "mean_effect_noise_ratio": 5.29,
+      "correct_learned_commutator": 4,
+      "correct_raw_commutator": 0,
+      "correct_random_commutator": 0,
+      "correct_scrambled_encoder_commutator": 4,
+      "active_pair_is_pulse_flip": 4,
+      "correct_active_predicted_commutator": 4
+    }
+  },
+  "cases": [
+    {
+      "seed": 0,
+      "group": "exploratory",
+      "mechanism": "additive",
+      "jepa_action_accuracy": 0.98828125,
+      "scrambled_action_accuracy": 0.201171875,
+      "latent_spread": 0.6334285140037537,
+      "latent_rank": 2.9435467324435143,
+      "latent_commutator_choice": false,
+      "raw_commutator_choice": false,
+      "random_commutator_choice": false,
+      "scrambled_encoder_commutator_choice": false,
+      "proposed_pair": [
+        "pulse",
+        "wait"
+      ],
+      "active_choice": false,
+      "expected_noncommutative": false,
+      "commutator_ratio": 1.0054133787177226
+    },
+    {
+      "seed": 0,
+      "group": "exploratory",
+      "mechanism": "gated",
+      "jepa_action_accuracy": 0.890625,
+      "scrambled_action_accuracy": 0.25,
+      "latent_spread": 0.6387081146240234,
+      "latent_rank": 2.962145099700856,
+      "latent_commutator_choice": true,
+      "raw_commutator_choice": false,
+      "random_commutator_choice": false,
+      "scrambled_encoder_commutator_choice": true,
+      "proposed_pair": [
+        "pulse",
+        "flip"
+      ],
+      "active_choice": true,
+      "expected_noncommutative": true,
+      "commutator_ratio": 6.260797283599046
+    },
+    {
+      "seed": 1,
+      "group": "exploratory",
+      "mechanism": "additive",
+      "jepa_action_accuracy": 0.98046875,
+      "scrambled_action_accuracy": 0.71875,
+      "latent_spread": 0.6248683929443359,
+      "latent_rank": 1.983360424806776,
+      "latent_commutator_choice": false,
+      "raw_commutator_choice": false,
+      "random_commutator_choice": false,
+      "scrambled_encoder_commutator_choice": false,
+      "proposed_pair": [
+        "flip",
+        "wait"
+      ],
+      "active_choice": false,
+      "expected_noncommutative": false,
+      "commutator_ratio": 0.9440282736999007
+    },
+    {
+      "seed": 1,
+      "group": "exploratory",
+      "mechanism": "gated",
+      "jepa_action_accuracy": 0.9140625,
+      "scrambled_action_accuracy": 0.552734375,
+      "latent_spread": 0.6314359903335571,
+      "latent_rank": 2.117462406614576,
+      "latent_commutator_choice": true,
+      "raw_commutator_choice": false,
+      "random_commutator_choice": false,
+      "scrambled_encoder_commutator_choice": true,
+      "proposed_pair": [
+        "pulse",
+        "flip"
+      ],
+      "active_choice": true,
+      "expected_noncommutative": true,
+      "commutator_ratio": 5.464934691977479
+    },
+    {
+      "seed": 2,
+      "group": "exploratory",
+      "mechanism": "additive",
+      "jepa_action_accuracy": 0.9765625,
+      "scrambled_action_accuracy": 0.392578125,
+      "latent_spread": 0.6356717348098755,
+      "latent_rank": 1.9740467097076297,
+      "latent_commutator_choice": false,
+      "raw_commutator_choice": false,
+      "random_commutator_choice": false,
+      "scrambled_encoder_commutator_choice": false,
+      "proposed_pair": [
+        "pulse",
+        "flip"
+      ],
+      "active_choice": false,
+      "expected_noncommutative": false,
+      "commutator_ratio": 1.11014113876655
+    },
+    {
+      "seed": 2,
+      "group": "exploratory",
+      "mechanism": "gated",
+      "jepa_action_accuracy": 0.923828125,
+      "scrambled_action_accuracy": 0.193359375,
+      "latent_spread": 0.640344500541687,
+      "latent_rank": 2.3233885474845466,
+      "latent_commutator_choice": true,
+      "raw_commutator_choice": false,
+      "random_commutator_choice": false,
+      "scrambled_encoder_commutator_choice": true,
+      "proposed_pair": [
+        "pulse",
+        "flip"
+      ],
+      "active_choice": true,
+      "expected_noncommutative": true,
+      "commutator_ratio": 5.343215293489292
+    },
+    {
+      "seed": 3,
+      "group": "exploratory",
+      "mechanism": "additive",
+      "jepa_action_accuracy": 0.986328125,
+      "scrambled_action_accuracy": 0.72265625,
+      "latent_spread": 0.5943806171417236,
+      "latent_rank": 2.0890744781691306,
+      "latent_commutator_choice": false,
+      "raw_commutator_choice": false,
+      "random_commutator_choice": false,
+      "scrambled_encoder_commutator_choice": false,
+      "proposed_pair": [
+        "pulse",
+        "flip"
+      ],
+      "active_choice": false,
+      "expected_noncommutative": false,
+      "commutator_ratio": 0.9998552292435243
+    },
+    {
+      "seed": 3,
+      "group": "exploratory",
+      "mechanism": "gated",
+      "jepa_action_accuracy": 0.923828125,
+      "scrambled_action_accuracy": 0.544921875,
+      "latent_spread": 0.5918076038360596,
+      "latent_rank": 2.115604233064511,
+      "latent_commutator_choice": true,
+      "raw_commutator_choice": false,
+      "random_commutator_choice": false,
+      "scrambled_encoder_commutator_choice": true,
+      "proposed_pair": [
+        "pulse",
+        "flip"
+      ],
+      "active_choice": true,
+      "expected_noncommutative": true,
+      "commutator_ratio": 6.4557884174936015
+    },
+    {
+      "seed": 4,
+      "group": "confirmation",
+      "mechanism": "additive",
+      "jepa_action_accuracy": 0.98046875,
+      "scrambled_action_accuracy": 0.791015625,
+      "latent_spread": 0.612436056137085,
+      "latent_rank": 1.9735828003969909,
+      "latent_commutator_choice": false,
+      "raw_commutator_choice": false,
+      "random_commutator_choice": false,
+      "scrambled_encoder_commutator_choice": false,
+      "proposed_pair": [
+        "pulse",
+        "flip"
+      ],
+      "active_choice": false,
+      "expected_noncommutative": false,
+      "commutator_ratio": 1.076209737116813
+    },
+    {
+      "seed": 4,
+      "group": "confirmation",
+      "mechanism": "gated",
+      "jepa_action_accuracy": 0.931640625,
+      "scrambled_action_accuracy": 0.30859375,
+      "latent_spread": 0.6160334348678589,
+      "latent_rank": 2.1093980178625555,
+      "latent_commutator_choice": true,
+      "raw_commutator_choice": false,
+      "random_commutator_choice": false,
+      "scrambled_encoder_commutator_choice": true,
+      "proposed_pair": [
+        "pulse",
+        "flip"
+      ],
+      "active_choice": true,
+      "expected_noncommutative": true,
+      "commutator_ratio": 5.158165097896492
+    },
+    {
+      "seed": 5,
+      "group": "confirmation",
+      "mechanism": "additive",
+      "jepa_action_accuracy": 0.982421875,
+      "scrambled_action_accuracy": 0.6640625,
+      "latent_spread": 0.6142540574073792,
+      "latent_rank": 2.010280575379368,
+      "latent_commutator_choice": false,
+      "raw_commutator_choice": false,
+      "random_commutator_choice": false,
+      "scrambled_encoder_commutator_choice": false,
+      "proposed_pair": [
+        "pulse",
+        "flip"
+      ],
+      "active_choice": false,
+      "expected_noncommutative": false,
+      "commutator_ratio": 1.07377277855822
+    },
+    {
+      "seed": 5,
+      "group": "confirmation",
+      "mechanism": "gated",
+      "jepa_action_accuracy": 0.91796875,
+      "scrambled_action_accuracy": 0.671875,
+      "latent_spread": 0.6065629720687866,
+      "latent_rank": 2.2334447876630317,
+      "latent_commutator_choice": true,
+      "raw_commutator_choice": false,
+      "random_commutator_choice": false,
+      "scrambled_encoder_commutator_choice": true,
+      "proposed_pair": [
+        "pulse",
+        "flip"
+      ],
+      "active_choice": true,
+      "expected_noncommutative": true,
+      "commutator_ratio": 5.566210246484875
+    },
+    {
+      "seed": 6,
+      "group": "confirmation",
+      "mechanism": "additive",
+      "jepa_action_accuracy": 0.96875,
+      "scrambled_action_accuracy": 0.47265625,
+      "latent_spread": 0.609251856803894,
+      "latent_rank": 2.176112452015088,
+      "latent_commutator_choice": false,
+      "raw_commutator_choice": false,
+      "random_commutator_choice": false,
+      "scrambled_encoder_commutator_choice": false,
+      "proposed_pair": [
+        "flip",
+        "wait"
+      ],
+      "active_choice": false,
+      "expected_noncommutative": false,
+      "commutator_ratio": 1.084504195962264
+    },
+    {
+      "seed": 6,
+      "group": "confirmation",
+      "mechanism": "gated",
+      "jepa_action_accuracy": 0.8984375,
+      "scrambled_action_accuracy": 0.44140625,
+      "latent_spread": 0.6101114749908447,
+      "latent_rank": 2.105244306133297,
+      "latent_commutator_choice": true,
+      "raw_commutator_choice": false,
+      "random_commutator_choice": false,
+      "scrambled_encoder_commutator_choice": true,
+      "proposed_pair": [
+        "pulse",
+        "flip"
+      ],
+      "active_choice": true,
+      "expected_noncommutative": true,
+      "commutator_ratio": 5.572932517043869
+    },
+    {
+      "seed": 7,
+      "group": "confirmation",
+      "mechanism": "additive",
+      "jepa_action_accuracy": 0.974609375,
+      "scrambled_action_accuracy": 0.447265625,
+      "latent_spread": 0.619390070438385,
+      "latent_rank": 2.3241225539815034,
+      "latent_commutator_choice": false,
+      "raw_commutator_choice": false,
+      "random_commutator_choice": false,
+      "scrambled_encoder_commutator_choice": false,
+      "proposed_pair": [
+        "pulse",
+        "wait"
+      ],
+      "active_choice": false,
+      "expected_noncommutative": false,
+      "commutator_ratio": 0.9348313038371169
+    },
+    {
+      "seed": 7,
+      "group": "confirmation",
+      "mechanism": "gated",
+      "jepa_action_accuracy": 0.904296875,
+      "scrambled_action_accuracy": 0.458984375,
+      "latent_spread": 0.6162546873092651,
+      "latent_rank": 2.2976165537720408,
+      "latent_commutator_choice": true,
+      "raw_commutator_choice": false,
+      "random_commutator_choice": false,
+      "scrambled_encoder_commutator_choice": true,
+      "proposed_pair": [
+        "pulse",
+        "flip"
+      ],
+      "active_choice": true,
+      "expected_noncommutative": true,
+      "commutator_ratio": 4.86412307344628
+    }
+  ],
+  "limitations": [
+    "Only two simulated mechanisms, no unique causal-graph identification",
+    "Scrambled-action encoder also detects commutator: action-conditioned learning not demonstrated necessary for this detection",
+    "Raw and random baselines use the fixed mean-distance/noise decision; other algorithms could recover raw signal",
+    "Four confirmation seeds are still a small independent replication set",
+    "The action pair is preregistered for primary grading; active proposed pair is diagnostic and evaluated separately",
+    "Training and heldout share sensor renderer geometry; no cross-domain shift tested"
+  ]
+}
