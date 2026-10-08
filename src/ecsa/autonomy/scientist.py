@@ -73,7 +73,10 @@ class AutonomousScientist:
                 "no contract experiment can be grounded from the public surface"
             )
         if len(contracts) < 2:
-            return self.experiments.select_bootstrap(candidates)
+            return self.experiments.select_applicability(
+                perception=perception,
+                experiments=candidates,
+            )
 
         probability = 1.0 / len(contracts)
         posterior = TheoryPosterior(
@@ -85,6 +88,7 @@ class AutonomousScientist:
         return self.experiments.select_active(
             posterior=posterior,
             experiments=candidates,
+            perception=perception,
         )
 
     def observe_transition(

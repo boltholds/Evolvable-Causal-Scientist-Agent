@@ -21,7 +21,7 @@ def run_paired_arena_b(
     max_ground_actions: int,
     output_dir: Path,
 ) -> tuple[PairedArenaBResult, ...]:
-    """Run matched Arena B episodes with scoring switched off/on.
+    """Run matched Arena B episodes with applicability EIG switched off/on.
 
     Fixed seeds and budgets permit within-seed comparisons, but not claims
     of improved generalization without held-out episodes.
@@ -38,7 +38,8 @@ def run_paired_arena_b(
             max_steps=max_steps,
             max_ground_actions=max_ground_actions,
             output_dir=root / str(seed) / "baseline",
-            use_affordance_scoring=False,
+            use_affordance_scoring=True,
+            use_applicability_selection=False,
         )
         affordance = run_autonomous_episode(
             scenario="Reactor Lab",
@@ -48,6 +49,7 @@ def run_paired_arena_b(
             max_ground_actions=max_ground_actions,
             output_dir=root / str(seed) / "affordance",
             use_affordance_scoring=True,
+            use_applicability_selection=True,
         )
         results.append(PairedArenaBResult(
             seed=seed, baseline=baseline, affordance=affordance,

@@ -11,6 +11,8 @@ from ecsa.contracts import (
 from ecsa.science import ScienceKernel
 
 from .affordances import ActiveAffordanceLearner
+from .applicability import ActiveApplicabilityLearner
+from .preconditions import observable_conditions
 from .preconditions import ActivePreconditionLearner
 from .candidate_generation import (
     ExperimentHistory,
@@ -176,11 +178,17 @@ class ContractExperimentCoordinator:
         candidates: StructuralCandidateGenerator | None = None,
         affordances: ActiveAffordanceLearner | None = None,
         preconditions: ActivePreconditionLearner | None = None,
+        applicability: ActiveApplicabilityLearner | None = None,
         use_affordance_scoring: bool = True,
+        use_applicability_selection: bool = True,
     ) -> None:
         if type(use_affordance_scoring) is not bool:
             raise TypeError("use_affordance_scoring must be bool")
+        if type(use_applicability_selection) is not bool:
+            raise TypeError("use_applicability_selection must be bool")
         self.use_affordance_scoring = use_affordance_scoring
+        self.use_applicability_selection = use_applicability_selection
+        self.applicability = applicability if applicability is not None else ActiveApplicabilityLearner()
         self.science = science or ScienceKernel()
         self.affordances = affordances if affordances is not None else ActiveAffordanceLearner()
         self.preconditions = preconditions if preconditions is not None else ActivePreconditionLearner()
@@ -198,9 +206,15 @@ class ContractExperimentCoordinator:
         before: PerceptualObservation | None = None,
     ) -> None:
         self.history.record(action, success=success)
+        if before is not None and state_id is None:
+            # Equality of public state is useful contrast evidence, not proof
+            # of equality of unobserved latent world state.
+            conditions = tuple(sorted(observable_conditions(before), key=repr))
+            state_id = sha256(repr(conditions).encode()).hexdigest()
         self.affordances.observe(action, success=success, state_id=state_id)
         if before is not None:
             self.preconditions.observe(action, success=success, before=before)
+            self.applicability.observe(action, success=success, before=before)
 
     def select_bootstrap(
         self,
@@ -276,12 +290,67 @@ class ContractExperimentCoordinator:
         return tuple(experiments)
         return tuple(experiments)
 
+    def select_applicability(
+        self,
+        *,
+        perception: PerceptualObservation,
+        experiments: tuple[ContractExperiment, ...],
+        min_information_gain_bits: float = 1e-9,
+    ) -> ContractExperiment:
+        """Use ScienceKernel on competing applicability rules, else explore."""
+        if not experiments:
+            raise ValueError("at least one contract experiment is required")
+        if not isinstance(perception, PerceptualObservation):
+            raise TypeError("perception must be PerceptualObservation")
+        if not self.use_applicability_selection:
+            return self.select_bootstrap(experiments)
+        groups: dict[tuple[str, int], list[tuple[float, ContractExperiment]]] = {}
+        for experiment in experiments:
+            action = experiment.action
+            signature = (action.schema_id, len(action.arguments))
+            belief = self.applicability.belief(*signature)
+            if belief is None:
+                continue
+            predictions = self.applicability.predictions(
+                belief,
+                experiment_id=experiment.experiment_id,
+                action=action,
+                before=perception,
+            )
+            score = self.science.score_experiment(belief.posterior, predictions)
+            groups.setdefault(signature, []).append((score.information_gain_bits, experiment))
+
+        # An equal information score for every grounding provides no active
+        # ordering signal. Preserve the structural exploration fallback.
+        informative: list[tuple[float, ContractExperiment]] = []
+        for scored in groups.values():
+            values = tuple(score for score, _ in scored)
+            if len(values) < 2 or max(values) - min(values) <= min_information_gain_bits:
+                continue
+            informative.extend(
+                (score, experiment)
+                for score, experiment in scored
+                if score > min_information_gain_bits
+            )
+        if not informative:
+            return self.select_bootstrap(experiments)
+        return min(
+            informative,
+            key=lambda item: (
+                -item[0],
+                -self.history.bootstrap_score(item[1].action)[0],
+                -self.history.bootstrap_score(item[1].action)[1],
+                item[1].experiment_id,
+            ),
+        )[1]
+
     def select_active(
         self,
         *,
         posterior: TheoryPosterior,
         experiments: tuple[ContractExperiment, ...],
         min_information_gain_bits: float = 1e-12,
+        perception: PerceptualObservation | None = None,
     ) -> ContractExperiment:
         if not experiments:
             raise ValueError("at least one contract experiment is required")
@@ -328,6 +397,10 @@ class ContractExperimentCoordinator:
             best_score.information_gain_bits
             <= float(min_information_gain_bits)
         ):
+            if perception is not None:
+                return self.select_applicability(
+                    perception=perception, experiments=experiments,
+                )
             return self.select_bootstrap(experiments)
         return best_experiment
 

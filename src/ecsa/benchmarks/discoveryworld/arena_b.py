@@ -73,6 +73,7 @@ def run_autonomous_episode(
     output_dir: Path,
     max_ground_actions: int = 64,
     use_affordance_scoring: bool = True,
+    use_applicability_selection: bool = True,
 ) -> ArenaBResult:
     if scenario != "Reactor Lab" or difficulty != "Normal":
         raise ValueError(
@@ -96,6 +97,7 @@ def run_autonomous_episode(
         world_model=world_model,
         experiments=ContractExperimentCoordinator(
             use_affordance_scoring=use_affordance_scoring,
+            use_applicability_selection=use_applicability_selection,
         ),
         perception=perception,
     )
