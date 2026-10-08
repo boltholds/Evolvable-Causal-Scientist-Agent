@@ -36,6 +36,11 @@ class ArenaBResult:
     applicability_eig_count: int = 0
     contract_eig_count: int = 0
     applicability_hypothesis_count: int = 0
+    model_prediction_count: int = 0
+    schema_brier: float = 0.0
+    applicability_brier: float = 0.0
+    model_ready_schema_brier: float = 0.0
+    model_ready_applicability_brier: float = 0.0
 
 
 def _wire(value):
@@ -121,6 +126,11 @@ def run_autonomous_episode(
     contract_eig_count = 0
     action_signatures: set[tuple[str, int]] = set()
     evidence_ids: set[str] = set()
+    model_prediction_count = 0
+    schema_brier_total = 0.0
+    applicability_brier_total = 0.0
+    ready_schema_brier_total = 0.0
+    ready_applicability_brier_total = 0.0
 
     while (
         not environment.done
@@ -136,6 +146,34 @@ def run_autonomous_episode(
             ),
             budget=budget,
         )
+        # Prequential evaluation: each prediction is calculated from the
+        # history available *before* executing the selected ground action.
+        history = scientist.experiments.history
+        schema_probability = history.schema_success_probability(
+            experiment.action.schema_id, len(experiment.action.arguments),
+        )
+        likelihood = schema_probability
+        active_belief = scientist.experiments.applicability.belief(
+            experiment.action.schema_id, len(experiment.action.arguments),
+        )
+        if active_belief is not None:
+            before_perception = perception.perceive(before)
+            prospective = scientist.experiments.applicability.predictions(
+                active_belief,
+                experiment_id=experiment.experiment_id,
+                action=experiment.action,
+                before=before_perception,
+            )
+            by_theory = {
+                prediction.theory_id: prediction.probability(("success",))
+                for prediction in prospective
+            }
+            likelihood = sum(
+                mass * by_theory[theory_id]
+                for theory_id, mass in active_belief.posterior.probabilities
+            )
+            model_prediction_count += 1
+
         selection_mode = scientist.experiments.last_selection_mode.value
         applicability_eig_count += int(selection_mode == "applicability_eig")
         contract_eig_count += int(selection_mode == "world_contract_eig")
@@ -158,12 +196,22 @@ def run_autonomous_episode(
         evidence_ids.update(update.new_evidence_ids)
         transition_count += 1
         successes += int(outcome.success)
+        observation_outcome = float(outcome.success)
+        baseline_loss = (schema_probability - observation_outcome) ** 2
+        model_loss = (likelihood - observation_outcome) ** 2
+        schema_brier_total += baseline_loss
+        applicability_brier_total += model_loss
+        if active_belief is not None:
+            ready_schema_brier_total += baseline_loss
+            ready_applicability_brier_total += model_loss
 
         _append_jsonl(
             transition_path,
             {
                 "transition_id": transition.transition_id,
                 "selection_mode": selection_mode,
+                "schema_success_probability": schema_probability,
+                "applicability_success_probability": likelihood,
                 "before_id": before.observation_id,
                 "action": {
                     "schema_id": experiment.action.schema_id,
@@ -201,6 +249,11 @@ def run_autonomous_episode(
         successes=successes,
         applicability_eig_count=applicability_eig_count,
         contract_eig_count=contract_eig_count,
+        model_prediction_count=model_prediction_count,
+        schema_brier=schema_brier_total / max(1, transition_count),
+        applicability_brier=applicability_brier_total / max(1, transition_count),
+        model_ready_schema_brier=ready_schema_brier_total / max(1, model_prediction_count),
+        model_ready_applicability_brier=ready_applicability_brier_total / max(1, model_prediction_count),
         applicability_hypothesis_count=sum(
             len(belief.hypotheses)
             for schema_id, arity in sorted(action_signatures)

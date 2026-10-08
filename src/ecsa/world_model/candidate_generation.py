@@ -84,6 +84,19 @@ class ExperimentHistory:
             + self._schema_failures[signature]
         )
 
+    def schema_success_probability(
+        self,
+        schema_id: str,
+        arity: int,
+    ) -> float:
+        signature = (schema_id, arity)
+        return (
+            1.0 + self._schema_successes[signature]
+        ) / (
+            2.0 + self._schema_successes[signature]
+            + self._schema_failures[signature]
+        )
+
     def schema_uncertainty(
         self,
         schema_id: str,
