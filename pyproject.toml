@@ -18,6 +18,7 @@ mlmd = ["ml-metadata==1.21.0"]
 discoveryworld = ["discoveryworld @ git+https://github.com/allenai/discoveryworld.git@fd591323920be0d3786ef350955de1945aa571e5"]
 llm = ["openai>=2,<4"]
 world-model-planning = ["macq==0.3.11"]
+neural-relations = ["numpy>=1.26,<3", "torch>=2.3,<3"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
