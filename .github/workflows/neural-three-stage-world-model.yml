@@ -1,0 +1,36 @@
+name: neural-three-stage-world-model
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/ecsa/experimental/three_stage_world_model.py'
+      - 'src/ecsa/experimental/world_model_encoders.py'
+      - 'scripts/benchmarks/run_three_stage_world_model.sh'
+      - 'tests/test_three_stage_world_model.py'
+      - '.github/workflows/neural-three-stage-world-model.yml'
+  pull_request:
+    paths:
+      - 'src/ecsa/experimental/three_stage_world_model.py'
+      - 'src/ecsa/experimental/world_model_encoders.py'
+      - 'scripts/benchmarks/run_three_stage_world_model.sh'
+      - 'tests/test_three_stage_world_model.py'
+      - '.github/workflows/neural-three-stage-world-model.yml'
+
+jobs:
+  offline-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install CPU PyTorch
+        run: pip install 'torch>=2.3,<3' --index-url https://download.pytorch.org/whl/cpu
+      - name: Install offline tests
+        run: pip install -e '.[test,neural-relations]'
+      - name: Validate three-stage suite and frozen world-model contracts
+        run: python -m pytest -q tests/test_three_stage_world_model.py tests/test_verified_relation_kan.py tests/test_world_model_encoders.py
+      - name: Validate launch script syntax
+        run: bash -n scripts/benchmarks/run_three_stage_world_model.sh
