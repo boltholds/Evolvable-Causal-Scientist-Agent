@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import StrEnum
 from hashlib import sha256
 from math import isfinite
 
@@ -25,6 +26,12 @@ from .contracts import (
 )
 from .hypotheses import WorldContractHypothesis
 from .perception.base import PerceptualObservation
+
+
+class ExperimentSelectionMode(StrEnum):
+    STRUCTURAL = "structural"
+    WORLD_CONTRACT_EIG = "world_contract_eig"
+    APPLICABILITY_EIG = "applicability_eig"
 
 
 @dataclass(frozen=True)
@@ -188,6 +195,7 @@ class ContractExperimentCoordinator:
             raise TypeError("use_applicability_selection must be bool")
         self.use_affordance_scoring = use_affordance_scoring
         self.use_applicability_selection = use_applicability_selection
+        self.last_selection_mode = ExperimentSelectionMode.STRUCTURAL
         self.applicability = applicability if applicability is not None else ActiveApplicabilityLearner()
         self.science = science or ScienceKernel()
         self.affordances = affordances if affordances is not None else ActiveAffordanceLearner()
@@ -222,6 +230,7 @@ class ContractExperimentCoordinator:
     ) -> ContractExperiment:
         if not experiments:
             raise ValueError("at least one contract experiment is required")
+        self.last_selection_mode = ExperimentSelectionMode.STRUCTURAL
         return min(
             experiments,
             key=lambda experiment: (
@@ -334,6 +343,7 @@ class ContractExperimentCoordinator:
             )
         if not informative:
             return self.select_bootstrap(experiments)
+        self.last_selection_mode = ExperimentSelectionMode.APPLICABILITY_EIG
         return min(
             informative,
             key=lambda item: (
@@ -402,6 +412,7 @@ class ContractExperimentCoordinator:
                     perception=perception, experiments=experiments,
                 )
             return self.select_bootstrap(experiments)
+        self.last_selection_mode = ExperimentSelectionMode.WORLD_CONTRACT_EIG
         return best_experiment
 
     def select(
@@ -426,6 +437,7 @@ class ContractExperimentCoordinator:
                 for experiment in experiments
             ),
         )
+        self.last_selection_mode = ExperimentSelectionMode.WORLD_CONTRACT_EIG
         return next(
             experiment
             for experiment in experiments

@@ -33,6 +33,9 @@ class ArenaBResult:
     grounding_evidence_count: int
     contract_count: int
     successes: int = 0
+    applicability_eig_count: int = 0
+    contract_eig_count: int = 0
+    applicability_hypothesis_count: int = 0
 
 
 def _wire(value):
@@ -114,6 +117,9 @@ def run_autonomous_episode(
 
     transition_count = 0
     successes = 0
+    applicability_eig_count = 0
+    contract_eig_count = 0
+    action_signatures: set[tuple[str, int]] = set()
     evidence_ids: set[str] = set()
 
     while (
@@ -130,6 +136,10 @@ def run_autonomous_episode(
             ),
             budget=budget,
         )
+        selection_mode = scientist.experiments.last_selection_mode.value
+        applicability_eig_count += int(selection_mode == "applicability_eig")
+        contract_eig_count += int(selection_mode == "world_contract_eig")
+        action_signatures.add((experiment.action.schema_id, len(experiment.action.arguments)))
         outcome = environment.execute_raw_action(
             experiment.action
         )
@@ -153,6 +163,7 @@ def run_autonomous_episode(
             transition_path,
             {
                 "transition_id": transition.transition_id,
+                "selection_mode": selection_mode,
                 "before_id": before.observation_id,
                 "action": {
                     "schema_id": experiment.action.schema_id,
@@ -188,4 +199,11 @@ def run_autonomous_episode(
             world_model.contract_hypotheses()
         ),
         successes=successes,
+        applicability_eig_count=applicability_eig_count,
+        contract_eig_count=contract_eig_count,
+        applicability_hypothesis_count=sum(
+            len(belief.hypotheses)
+            for schema_id, arity in sorted(action_signatures)
+            if (belief := scientist.experiments.applicability.belief(schema_id, arity)) is not None
+        ),
     )
