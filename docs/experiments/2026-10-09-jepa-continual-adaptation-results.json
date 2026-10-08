@@ -1,0 +1,199 @@
+{
+  "protocol": "action_jepa_recurrent_adaptation_v1",
+  "source_fingerprint_file": "results/source-sha256-before-holdout.txt",
+  "fixed_before_holdout": [
+    9,
+    10,
+    11,
+    12
+  ],
+  "seeds": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13
+  ],
+  "n": 14,
+  "metrics": {
+    "initial_confirmed": {
+      "count": 12,
+      "denominator": 14
+    },
+    "return_recognized": {
+      "count": 11,
+      "denominator": 14
+    },
+    "raw_ridge_alarms_after_shift": {
+      "count": 14,
+      "denominator": 14
+    },
+    "raw_ridge_early": {
+      "count": 0,
+      "denominator": 14
+    },
+    "jepa_stationary_false_alarm": {
+      "count": 1,
+      "denominator": 14
+    },
+    "naive_gated_placebo_false_alarm": {
+      "count": 1,
+      "denominator": 14
+    },
+    "replay_gated_placebo_false_alarm": {
+      "count": 2,
+      "denominator": 14
+    },
+    "replay_second_alarm": {
+      "count": 1,
+      "denominator": 14
+    },
+    "naive_forgetting_delta": {
+      "n": 12,
+      "mean": 0.015661167562939227,
+      "median": 0.01750450418330729,
+      "min": -0.005707021802663803,
+      "max": 0.0335945300757885,
+      "sd": 0.009788399262778682
+    },
+    "replay_forgetting_delta": {
+      "n": 12,
+      "mean": -0.0019344631194447477,
+      "median": 0.0005089272744953632,
+      "min": -0.02299398183822632,
+      "max": 0.012330304831266403,
+      "sd": 0.009769607476571206
+    },
+    "naive_gated_gain": {
+      "n": 12,
+      "mean": 0.027038425168332953,
+      "median": 0.02507035923190415,
+      "min": 0.015076019801199436,
+      "max": 0.04703880473971367,
+      "sd": 0.00915133799292682
+    },
+    "replay_gated_gain": {
+      "n": 12,
+      "mean": 0.02034863185447951,
+      "median": 0.020094994455575943,
+      "min": 0.012158235535025597,
+      "max": 0.03461979702115059,
+      "sd": 0.007345214622414098
+    },
+    "naive_gated_accuracy": {
+      "n": 12,
+      "mean": 0.9095052083333334,
+      "median": 0.9111328125,
+      "min": 0.888671875,
+      "max": 0.92578125,
+      "sd": 0.012192522153867012
+    },
+    "replay_gated_accuracy": {
+      "n": 12,
+      "mean": 0.9080403645833334,
+      "median": 0.9072265625,
+      "min": 0.880859375,
+      "max": 0.927734375,
+      "sd": 0.012477183470154352
+    },
+    "frozen_gated_accuracy": {
+      "n": 12,
+      "mean": 0.9059244791666666,
+      "median": 0.9052734375,
+      "min": 0.8828125,
+      "max": 0.919921875,
+      "sd": 0.011260985075042146
+    },
+    "naive_additive_accuracy": {
+      "n": 12,
+      "mean": 0.9376627604166666,
+      "median": 0.9443359375,
+      "min": 0.88671875,
+      "max": 0.955078125,
+      "sd": 0.01959255884167176
+    },
+    "replay_additive_accuracy": {
+      "n": 12,
+      "mean": 0.9833984375,
+      "median": 0.982421875,
+      "min": 0.974609375,
+      "max": 0.99609375,
+      "sd": 0.006892773062422469
+    },
+    "mean_rehearsal_forgetting_improvement": 0.017595630682383973,
+    "replay_improved_retention_count": 12,
+    "naive_new_gain_positive_count": 12,
+    "replay_new_gain_positive_count": 12,
+    "return_router_naive_old_checkpoint_count": 9,
+    "return_router_replay_old_checkpoint_count": 6,
+    "first_alarm_delays": [
+      14,
+      4,
+      13,
+      1,
+      15,
+      13,
+      28,
+      66,
+      5,
+      6,
+      6,
+      2
+    ],
+    "second_alarm_delays": [
+      50,
+      6,
+      22,
+      13,
+      35,
+      33,
+      6,
+      13,
+      6,
+      21,
+      5
+    ],
+    "adaptation_intervention_steps": [
+      1760,
+      1760,
+      1760,
+      1760,
+      1760,
+      1376,
+      1760,
+      1760,
+      1760,
+      1760,
+      1760,
+      1760
+    ],
+    "missing_or_early_seeds": [
+      7,
+      8
+    ],
+    "return_not_confirmed_seeds": [
+      5
+    ],
+    "first_validation_recovery_20pct": {
+      "naive": 12,
+      "replay": 12
+    }
+  },
+  "limitations": [
+    "No independent sensor geometry; 14 seeds not 14 separate physical worlds",
+    "Offline evaluator has epoch-cloning capabilities",
+    "Diagnostic statistics after adaptation are conditioned on verified change detection",
+    "Replayed predictor remains in fixed encoder coordinates; not full JEPA encoder adaptation",
+    "Stored model routing is not identical to preserving one model",
+    "Return failure to reject order effect alone is insufficient; separate fixed-pair decline test required"
+  ]
+}
