@@ -4,8 +4,8 @@ on:
   push:
     branches: [main]
     paths:
-      - 'src/ecsa/experimental/token_state_feedback.py'
-      - 'tests/test_token_state_feedback.py'
+      - 'src/ecsa/experimental/token_state_relations.py'
+      - 'tests/test_token_state_relations.py'
       - '.github/workflows/neural-token-gated.yml'
       - 'docs/experiments/2026-10-08-gated-token-pooling.md'
   workflow_dispatch:
@@ -27,8 +27,8 @@ jobs:
         run: pip install 'torch>=2.3,<3' --index-url https://download.pytorch.org/whl/cpu
       - name: Install optional tests
         run: pip install -e '.[test,neural-relations]'
-      - name: Prove matched initial KAN, masks and adapter-only gradient
-        run: python -m pytest -q tests/test_token_state_feedback.py tests/test_feedback_encoder.py
+      - name: Prove matched initial KAN, masks and frozen X/Y encoder gradients
+        run: python -m pytest -q tests/test_token_state_relations.py tests/test_verbalization_study.py
 
   minilm-gated-cpu:
     runs-on: ubuntu-latest
@@ -47,13 +47,13 @@ jobs:
         run: pip install -e '.[test,pretrained-encoder]'
       - name: Compare original and gated pooling across new seeds
         run: |
-          python -m ecsa.experimental.token_state_feedback \
+          python -m ecsa.experimental.token_state_relations \
             --model sentence-transformers/all-MiniLM-L6-v2 \
             --laws precision operator range_shift sign --seeds 3 4 5 \
             --arms sentence_64 sentence_full token_mean token_attention \
-                   gated_attention gated_kan_update gated_feedback numeric_control \
+                   gated_attention gated_kan_update numeric_control \
             --bootstrap 24 --adaptation 16 --calibration 12 --heldout 24 \
-            --warmup-steps 45 --feedback-steps 24 --max-seq-length 256 \
+            --warmup-steps 45 --extra-kan-steps 24 --max-seq-length 256 \
             --device cpu --output results/minilm_gated.json | tee minilm-summary.json
       - name: Verify complete paired dataset and report without success assertion
         run: |
@@ -62,13 +62,13 @@ jobs:
           from collections import defaultdict
           d=json.load(open('results/minilm_gated.json'))
           rows=d['scores']
-          assert len(rows)==4*3*8*3, len(rows)
+          assert len(rows)==4*3*7*3, len(rows)
           groups=defaultdict(list)
           for r in rows:
               assert r['identity_overlap']==0
               assert (r['train_pairs'],r['validation_pairs'],r['heldout_pairs'])==(40,12,24)
               groups[(r['law'],r['seed'],r['domain'])].append(r)
-          assert all(len(group)==8 and len({r['head_parameters'] for r in group})==1
+          assert all(len(group)==7 and len({r['head_parameters'] for r in group})==1
                      for group in groups.values())
           for arm in sorted({r['arm'] for r in rows}):
               group=[r for r in rows if r['arm']==arm and r['domain']=='counterfactual']
@@ -100,16 +100,16 @@ jobs:
         run: pip install 'torch>=2.3,<3' --index-url https://download.pytorch.org/whl/cpu
       - name: Install frozen Qwen dependencies
         run: pip install -e '.[test,pretrained-encoder]'
-      - name: Real Qwen full token states versus gated KAN feedback
+      - name: Real Qwen full token states versus gated KAN-only training
         run: |
-          python -m ecsa.experimental.token_state_feedback \
+          python -m ecsa.experimental.token_state_relations \
             --model Qwen/Qwen3-Embedding-0.6B \
             --revision 3d106eabb5535a84de3ae88f45887a78259b52de \
             --laws precision operator range_shift sign --seeds 1 \
             --arms sentence_64 sentence_full token_mean token_attention \
-                   gated_attention gated_kan_update gated_feedback numeric_control \
+                   gated_attention gated_kan_update numeric_control \
             --bootstrap 24 --adaptation 12 --calibration 8 --heldout 16 \
-            --warmup-steps 45 --feedback-steps 24 --max-seq-length 256 \
+            --warmup-steps 45 --extra-kan-steps 24 --max-seq-length 256 \
             --device cpu --output results/qwen_gated.json | tee qwen-summary.json
       - name: Check actual Qwen and compare within each law
         run: |
@@ -120,12 +120,12 @@ jobs:
           assert d['model']=='Qwen/Qwen3-Embedding-0.6B'
           assert d['revision']=='3d106eabb5535a84de3ae88f45887a78259b52de'
           assert d['max_seen_length']<=256 and d['backbone_forward_batches']>0
-          rows=d['scores'];assert len(rows)==4*1*8*3,len(rows)
+          rows=d['scores'];assert len(rows)==4*1*7*3,len(rows)
           groups=defaultdict(list)
           for r in rows:
               assert r['identity_overlap']==0 and r['model_width']==1024
               groups[(r['law'],r['seed'],r['domain'])].append(r)
-          assert all(len(g)==8 and len({r['head_parameters'] for r in g})==1 for g in groups.values())
+          assert all(len(g)==7 and len({r['head_parameters'] for r in g})==1 for g in groups.values())
           for law in ('precision','operator','range_shift','sign'):
               print(law)
               for r in rows:

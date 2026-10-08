@@ -1,13 +1,11 @@
-"""Frozen Qwen BPE-token states -> attention pooling -> competing spline KAN.
+"""Frozen Qwen contextual-token representations with KAN-only learning.
 
-A controlled experiment: retain all contextual token vectors, compare against
-Qwen's full or 64-d sentence embeddings, and train a *small* token-attention
-aggregator from frozen KAN hypotheses. The backbone is never fine-tuned.
-
-All decisions and checkpoint gates use training/calibration observations only.
-Counterfactual heldout outcomes are generated in the BENCHMARK evaluator and
-are never passed to warmup, feedback optimization or acceptance gates.
+The pretrained model and all X/Y pooling, attention and projection parameters
+remain fixed. Only the population of spline-KAN hypotheses is trainable.
+No KAN-to-encoder feedback or encoder gradient updates are permitted.
+Train/calibration and evaluation data remain disjoint.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -40,21 +38,16 @@ class StateArm(StrEnum):
     TOKEN_MEAN = "token_mean"
     TOKEN_ATTENTION = "token_attention"
     ATTENTION_KAN_UPDATE = "attention_kan_update"
-    ATTENTION_FEEDBACK = "attention_feedback"
     GATED_ATTENTION = "gated_attention"
     GATED_KAN_UPDATE = "gated_kan_update"
-    GATED_FEEDBACK = "gated_feedback"
 
 
-# The published seven-way ablation must remain reproducible when no additional
-# arms are requested. New residual-attention arms are an opt-in follow-up.
+# Active arms exclude historical feedback variants (see Git history).
 DEFAULT_ARMS = (
     StateArm.SENTENCE_64, StateArm.NUMERIC_CONTROL,
     StateArm.SENTENCE_FULL, StateArm.TOKEN_MEAN,
     StateArm.TOKEN_ATTENTION, StateArm.ATTENTION_KAN_UPDATE,
-    StateArm.ATTENTION_FEEDBACK,
 )
-
 
 class EvaluationDomain(StrEnum):
     COUNTERFACTUAL = "counterfactual"
@@ -201,30 +194,28 @@ class SentenceTransformerTokenPort:
 
 
 @dataclass(frozen=True)
-class TokenFeedbackConfig:
+class TokenRelationConfig:
     bootstrap: int = 24
     adaptation: int = 16
     calibration: int = 12
     heldout: int = 24
     warmup_steps: int = 45
-    feedback_steps: int = 24
+    extra_kan_steps: int = 24
     checkpoint_every: int = 8
     warmup_lr: float = 0.012
-    feedback_lr: float = 0.005
-    preservation_weight: float = 0.35
-    variance_weight: float = 0.80
+    kan_lr: float = 0.005
     min_spread: float = 0.006
     tolerance: float = 0.06
 
     def __post_init__(self) -> None:
         for key in ("bootstrap", "adaptation", "calibration", "heldout", "warmup_steps",
-                    "feedback_steps", "checkpoint_every"):
+                    "extra_kan_steps", "checkpoint_every"):
             val = getattr(self,key)
             if type(val) is not int or val < 2:
                 raise ValueError(f"{key} needs >= 2")
-        if self.checkpoint_every > self.feedback_steps:
-            raise ValueError("feedback needs at least one checkpoint")
-        for key in ("warmup_lr","feedback_lr", "preservation_weight","variance_weight", "min_spread", "tolerance"):
+        if self.checkpoint_every > self.extra_kan_steps:
+            raise ValueError("KAN update needs at least one checkpoint")
+        for key in ("warmup_lr", "kan_lr", "min_spread", "tolerance"):
             val = getattr(self,key)
             if not np.isfinite(val) or val < 0 or ("lr" in key and val == 0):
                 raise ValueError(f"invalid {key}")
@@ -262,8 +253,7 @@ class StateProjector(nn.Module):
         self.width = width
         self.token_attention = (
             nn.Linear(width, 1, bias=False) if mode in (
-                StateArm.TOKEN_ATTENTION, StateArm.ATTENTION_KAN_UPDATE,
-                StateArm.ATTENTION_FEEDBACK
+                StateArm.TOKEN_ATTENTION, StateArm.ATTENTION_KAN_UPDATE
             ) else None
         )
         self.residual_attention_gate = None
@@ -280,7 +270,6 @@ class StateProjector(nn.Module):
         )
         if mode in (
             StateArm.GATED_ATTENTION, StateArm.GATED_KAN_UPDATE,
-            StateArm.GATED_FEEDBACK,
         ):
             # Preserve the exact initial projection/head RNG state of the
             # token_mean baseline. A separately initialized attention branch
@@ -291,6 +280,10 @@ class StateProjector(nn.Module):
             # Start almost exactly at masked mean; bounded learned residual
             # can refine it but never replace the whole representation.
             self.residual_attention_gate = nn.Parameter(torch.tensor(-5.0))
+
+        # Encoders are frozen even during initial KAN warmup.
+        for parameter in self.parameters():
+            parameter.requires_grad_(False)
 
     def weights(self, states: TensorStates) -> Tensor:
         if self.token_attention is None:
@@ -355,7 +348,6 @@ class TokenKANSystem(nn.Module):
             SplineKANHead(knots=9,hidden=7),
         ))
         self.register_buffer("weights", torch.full((3,),1/3))
-        self.encoder_version = 0
         self.hypothesis_version = 0
 
     def logits(self,x:TensorStates,y:TensorStates) -> Tensor:
@@ -394,30 +386,23 @@ def _calibration_loss(model:TokenKANSystem,x:TensorStates,y:TensorStates) -> flo
     return float((-torch.log(p1).mean()-torch.log1p(-p0).mean())/2)
 
 
-def _collapse(model:TokenKANSystem,x:TensorStates,y:TensorStates, threshold:float) -> Tensor:
-    za,zb=model.x_encoder(x),model.y_encoder(y)
-    return (F.relu(threshold-za.std(0,unbiased=False)).square().mean()
-            +F.relu(threshold-zb.std(0,unbiased=False)).square().mean())
 
 
 @dataclass(frozen=True)
 class FitAudit:
     warmup_steps: int
-    feedback_steps: int
+    extra_kan_steps: int
     head_updates: int
-    encoder_updates: int
     accepted_checkpoints: int
     rejected_checkpoints: int
     initial_calibration_loss: float
     final_calibration_loss: float
     initial_spread: float
     final_spread: float
-    encoder_version: int
     hypothesis_version: int
     skipped_due_to_low_spread: bool = False
 
-
-def train_warmup(mode:StateArm,x:TensorStates,y:TensorStates,config:TokenFeedbackConfig,
+def train_warmup(mode:StateArm,x:TensorStates,y:TensorStates,config:TokenRelationConfig,
                  seed:int) -> TokenKANSystem:
     torch.set_num_threads(1)
     torch.manual_seed(seed*1000+59)
@@ -425,7 +410,8 @@ def train_warmup(mode:StateArm,x:TensorStates,y:TensorStates,config:TokenFeedbac
     model.x_encoder.fit_warmup_normalizer(x)
     model.y_encoder.fit_warmup_normalizer(y)
     original_state = copy.deepcopy(model.state_dict())
-    optimizer=torch.optim.AdamW(model.parameters(),lr=config.warmup_lr)
+    _allow_grad(model,heads=True)
+    optimizer=torch.optim.AdamW(model.hypotheses.parameters(),lr=config.warmup_lr)
     rng=np.random.default_rng(seed*1000+65)
     # Train-only constrained checkpoint selection prevents a catastrophic
     # end-of-warmup collapse from replacing an earlier informative state.
@@ -439,7 +425,7 @@ def train_warmup(mode:StateArm,x:TensorStates,y:TensorStates,config:TokenFeedbac
     for step in range(config.warmup_steps):
         shift=int(rng.integers(1,len(x)))
         losses=_losses(model,x,y,shift)
-        objective=losses.mean()+config.variance_weight*_collapse(model,x,y,0.25)
+        objective=losses.mean()
         optimizer.zero_grad(set_to_none=True)
         objective.backward()
         nn.utils.clip_grad_norm_(model.parameters(),1.)
@@ -454,88 +440,77 @@ def train_warmup(mode:StateArm,x:TensorStates,y:TensorStates,config:TokenFeedbac
                 best=copy.deepcopy(model.state_dict())
     # An underidentified observation set is a research outcome, not a test
     # framework error. Keep the initial hypothesis and explicitly flag it;
-    # subsequent KAN-to-encoder feedback is not admitted on this model.
+    # further KAN-only updates are skipped when variation is insufficient.
     model.warmup_adequate_spread = best is not None
     model.load_state_dict(original_state if best is None else best)
+    _allow_grad(model,heads=False)
     model.eval()
     return model
 
 
-def _allow_grad(model:TokenKANSystem, *, heads:bool, encoders:bool) -> None:
-    for item in model.hypotheses.parameters():
-        item.requires_grad_(heads); item.grad=None
-    for item in (*model.x_encoder.parameters(),*model.y_encoder.parameters()):
-        item.requires_grad_(encoders); item.grad=None
+def _allow_grad(model: TokenKANSystem, *, heads: bool) -> None:
+    """Freeze both encoders unconditionally; enable only KAN-head gradients."""
+    for param in model.hypotheses.parameters():
+        param.requires_grad_(heads)
+        param.grad = None
+    for param in (*model.x_encoder.parameters(), *model.y_encoder.parameters()):
+        param.requires_grad_(False)
+        param.grad = None
 
 
-def fit_feedback(warmup:TokenKANSystem,x:TensorStates,y:TensorStates,
-                 cx:TensorStates,cy:TensorStates,config:TokenFeedbackConfig,
-                 *,mode:StateArm,seed:int) -> tuple[TokenKANSystem,FitAudit]:
-    """No evaluation states or counterfactual generator are accepted."""
-    model=copy.deepcopy(warmup)
+def fit_kan_only(
+    warmup: TokenKANSystem, x: TensorStates, y: TensorStates,
+    cx: TensorStates, cy: TensorStates, config: TokenRelationConfig,
+    *, mode: StateArm, seed: int,
+) -> tuple[TokenKANSystem, FitAudit]:
+    """Fit spline KAN heads only; encoder representations never change."""
+    model = copy.deepcopy(warmup)
     _refresh_weights(model,cx,cy)
-    before=_calibration_loss(model,cx,cy)
-    before_spread=model.min_spread(cx,cy)
-    head_only=mode in (StateArm.ATTENTION_KAN_UPDATE, StateArm.GATED_KAN_UPDATE)
-    encoder_only=mode in (StateArm.ATTENTION_FEEDBACK, StateArm.GATED_FEEDBACK)
-    if not getattr(warmup, 'warmup_adequate_spread', True):
-        _allow_grad(model,heads=False,encoders=False)
-        return model,FitAudit(config.warmup_steps,0,0,0,0,0,
-                    before,before,before_spread,before_spread,0,0,True)
-    if not (head_only or encoder_only):
-        _allow_grad(model,heads=False,encoders=False)
-        return model,FitAudit(config.warmup_steps,0,0,0,0,0,before,before,
-                              before_spread,before_spread,0,0)
+    before = _calibration_loss(model,cx,cy)
+    before_spread = model.min_spread(cx,cy)
+    head_only = mode in (StateArm.ATTENTION_KAN_UPDATE, StateArm.GATED_KAN_UPDATE)
+    if not getattr(warmup,'warmup_adequate_spread',True):
+        _allow_grad(model,heads=False)
+        model.eval()
+        return model,FitAudit(config.warmup_steps,0,0,0,0,
+            before,before,before_spread,before_spread,0,True)
+    if not head_only:
+        _allow_grad(model,heads=False)
+        model.eval()
+        return model,FitAudit(config.warmup_steps,0,0,0,0,
+            before,before,before_spread,before_spread,0)
     if warmup.x_encoder.mode not in (StateArm.TOKEN_ATTENTION, StateArm.GATED_ATTENTION):
-        raise ValueError("feedback controls require attention-pool warmup")
-    _allow_grad(model,heads=head_only,encoders=encoder_only)
-    params=[p for p in model.parameters() if p.requires_grad]
-    reference=copy.deepcopy(warmup)
-    _allow_grad(reference,heads=False,encoders=False)
-    with torch.no_grad():
-        anchor_x=reference.x_encoder(x);anchor_y=reference.y_encoder(y)
-    rng=np.random.default_rng(seed*1000+103)
+        raise ValueError("KAN-only update requires attention-pooling warmup")
+    _allow_grad(model,heads=True)
+    params = tuple(model.hypotheses.parameters())
+    rng = np.random.default_rng(seed*1000+103)
     accepted=rejected=0
-    for start in range(0,config.feedback_steps,config.checkpoint_every):
-        n=min(config.checkpoint_every,config.feedback_steps-start)
+    for start in range(0,config.extra_kan_steps,config.checkpoint_every):
+        steps=min(config.checkpoint_every,config.extra_kan_steps-start)
         snapshot=copy.deepcopy(model.state_dict())
         base_nll=_calibration_loss(model,cx,cy)
-        old_spread=model.min_spread(cx,cy)
-        optimizer=torch.optim.AdamW(params,lr=config.feedback_lr)
-        for _ in range(n):
+        optimizer=torch.optim.AdamW(params,lr=config.kan_lr)
+        for _ in range(steps):
             loss=(_losses(model,x,y,int(rng.integers(1,len(x))))*model.weights.detach()).sum()
-            if encoder_only:
-                loss=(loss + config.preservation_weight*
-                      (F.mse_loss(model.x_encoder(x),anchor_x)+F.mse_loss(model.y_encoder(y),anchor_y))/2
-                      +config.variance_weight*_collapse(model,x,y,0.25))
             optimizer.zero_grad(set_to_none=True)
             loss.backward()
             nn.utils.clip_grad_norm_(params,1.)
             optimizer.step()
         _refresh_weights(model,cx,cy)
         candidate_nll=_calibration_loss(model,cx,cy)
-        candidate_spread=model.min_spread(cx,cy)
-        if (np.isfinite(candidate_nll) and np.isfinite(candidate_spread)
-            and candidate_nll<=base_nll+config.tolerance
-            and candidate_spread >= config.min_spread
-            and candidate_spread >= old_spread*.5):
+        if np.isfinite(candidate_nll) and candidate_nll<=base_nll+config.tolerance:
             accepted+=1
-            if encoder_only: model.encoder_version+=1
-            else: model.hypothesis_version+=1
+            model.hypothesis_version+=1
         else:
             rejected+=1
             model.load_state_dict(snapshot)
-    _allow_grad(model,heads=False,encoders=False)
+    _allow_grad(model,heads=False)
     model.eval()
     return model, FitAudit(
-        config.warmup_steps,config.feedback_steps,
-        config.feedback_steps if head_only else 0,
-        config.feedback_steps if encoder_only else 0,
+        config.warmup_steps,config.extra_kan_steps,config.extra_kan_steps,
         accepted,rejected,before,_calibration_loss(model,cx,cy),
-        before_spread,model.min_spread(cx,cy),
-        model.encoder_version,model.hypothesis_version,
+        before_spread,model.min_spread(cx,cy),model.hypothesis_version,
     )
-
 
 def _batch_for(port:TokenStatePort,samples:tuple[TextRelationSample,...]) -> tuple[TensorStates,TensorStates]:
     if not samples:
@@ -605,7 +580,7 @@ def evaluate_pair_scores(model:TokenKANSystem, x:TensorStates,y:TensorStates,
     return (_auc(p,label),float((p1>p0).mean()),float(((p-label)**2).mean()))
 
 
-def benchmark_one(law:StudyLaw,seed:int,config:TokenFeedbackConfig,
+def benchmark_one(law:StudyLaw,seed:int,config:TokenRelationConfig,
                   port:TokenStatePort,*,model_id:str,revision:str | None,
                    arms:tuple[StateArm,...]=DEFAULT_ARMS) -> tuple[Score,...]:
     if not isinstance(law,StudyLaw) or not all(isinstance(x,StateArm) for x in arms):
@@ -656,11 +631,11 @@ def benchmark_one(law:StudyLaw,seed:int,config:TokenFeedbackConfig,
     for arm in arms:
         arm_x,arm_y=(num_x,num_y) if arm is StateArm.NUMERIC_CONTROL else (xx,yy)
         arm_eval=numeric_eval if arm is StateArm.NUMERIC_CONTROL else data_eval
-        if arm in (StateArm.ATTENTION_KAN_UPDATE, StateArm.ATTENTION_FEEDBACK):
+        if arm is StateArm.ATTENTION_KAN_UPDATE:
             if attn_warmup is None:
                 attn_warmup=train_warmup(StateArm.TOKEN_ATTENTION,warmx,warmy,config,seed)
             warm=attn_warmup
-        elif arm in (StateArm.GATED_KAN_UPDATE, StateArm.GATED_FEEDBACK):
+        elif arm is StateArm.GATED_KAN_UPDATE:
             if gated_warmup is None:
                 gated_warmup=train_warmup(StateArm.GATED_ATTENTION,warmx,warmy,config,seed)
             warm=gated_warmup
@@ -670,7 +645,7 @@ def benchmark_one(law:StudyLaw,seed:int,config:TokenFeedbackConfig,
                 attn_warmup=warm
             if arm is StateArm.GATED_ATTENTION:
                 gated_warmup=warm
-        trained,audit=fit_feedback(warm,
+        trained,audit=fit_kan_only(warm,
             arm_x.take(0,adapt_end),arm_y.take(0,adapt_end),
             arm_x.take(adapt_end,total),arm_y.take(adapt_end,total),
             config,mode=arm,seed=seed)
@@ -689,7 +664,7 @@ def benchmark_one(law:StudyLaw,seed:int,config:TokenFeedbackConfig,
     return tuple(rows)
 
 
-def run_benchmark(*, port:TokenStatePort, config:TokenFeedbackConfig,
+def run_benchmark(*, port:TokenStatePort, config:TokenRelationConfig,
                   laws:tuple[StudyLaw,...],seeds:tuple[int,...],
                   model_id:str,revision:str | None,
                   arms:tuple[StateArm,...]=DEFAULT_ARMS) -> tuple[Score,...]:
@@ -699,7 +674,7 @@ def run_benchmark(*, port:TokenStatePort, config:TokenFeedbackConfig,
 
 
 def main() -> None:
-    parser=argparse.ArgumentParser(description="Full Qwen token-state versus sentence embedding KAN study")
+    parser=argparse.ArgumentParser(description="Frozen token-state representations and KAN-only study")
     parser.add_argument('--model',default=DEFAULT_MODEL)
     parser.add_argument('--revision',default='')
     parser.add_argument('--laws',nargs='+',choices=[x.value for x in StudyLaw],
@@ -712,15 +687,15 @@ def main() -> None:
     parser.add_argument('--calibration',type=int,default=12)
     parser.add_argument('--heldout',type=int,default=24)
     parser.add_argument('--warmup-steps',type=int,default=45)
-    parser.add_argument('--feedback-steps',type=int,default=24)
+    parser.add_argument('--extra-kan-steps',type=int,default=24)
     parser.add_argument('--max-seq-length',type=int,default=256)
     parser.add_argument('--batch-size',type=int,default=4)
     parser.add_argument('--device',default='cpu')
     parser.add_argument('--output',default='')
     args=parser.parse_args()
-    config=TokenFeedbackConfig(bootstrap=args.bootstrap, adaptation=args.adaptation,
+    config=TokenRelationConfig(bootstrap=args.bootstrap, adaptation=args.adaptation,
                                calibration=args.calibration,heldout=args.heldout,
-                               warmup_steps=args.warmup_steps,feedback_steps=args.feedback_steps)
+                               warmup_steps=args.warmup_steps,extra_kan_steps=args.extra_kan_steps)
     revision=args.revision or (DEFAULT_QWEN_REVISION if args.model==DEFAULT_MODEL else None)
     port=SentenceTransformerTokenPort(args.model,revision=revision,
                                        device=args.device,max_seq_length=args.max_seq_length,
@@ -737,14 +712,14 @@ def main() -> None:
           'scores':[asdict(x) for x in result],
           'limitations':[
              'Synthetic observations, counterfactual heldout evaluation only.',
-             'Qwen frozen. Feedback changes only lightweight pooling and projections.',
+             'Qwen and all X/Y encoders are frozen; only spline-KAN hypotheses train.',
              'Pair discriminator sigmoid is NOT calibrated p(Y|do(X)).',
              'Hypothesis weights from calibration are NOT Bayesian physical-law posterior.',
              'Full and token states are standardized with warmup-only mean and per-feature variation.',
              '64/1024-vs-full arms differ in trainable projection size; report counts.',
              'Numeric control uses the existing tanh-compressed generic numeric hash; not exact numerical measurements.',
              'No symbolic law extraction or agent-controlled intervention.',
-             'A low-variation warmup is explicitly flagged and feedback skipped, not assigned an invented valid posterior.',
+             'Insufficient warmup variation is flagged; further KAN updates are skipped.',
           ]}
     payload=json.dumps(data,indent=2,ensure_ascii=False)
     if args.output:
