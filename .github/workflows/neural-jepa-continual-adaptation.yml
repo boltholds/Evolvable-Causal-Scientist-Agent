@@ -1,0 +1,81 @@
+name: neural-jepa-continual-adaptation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/ecsa/experimental/jepa_recurrence_world.py'
+      - 'src/ecsa/experimental/jepa_adaptation.py'
+      - 'src/ecsa/experimental/jepa_adaptation_scientist.py'
+      - 'src/ecsa/experimental/jepa_adaptation_arena.py'
+      - 'scripts/benchmarks/run_jepa_adaptation.py'
+      - 'tests/test_jepa_adaptation.py'
+      - '.github/workflows/neural-jepa-continual-adaptation.yml'
+      - 'docs/experiments/2026-10-09-jepa-continual-adaptation.md'
+  pull_request:
+    paths:
+      - 'src/ecsa/experimental/jepa_recurrence_world.py'
+      - 'src/ecsa/experimental/jepa_adaptation.py'
+      - 'src/ecsa/experimental/jepa_adaptation_scientist.py'
+      - 'src/ecsa/experimental/jepa_adaptation_arena.py'
+      - 'scripts/benchmarks/run_jepa_adaptation.py'
+      - 'tests/test_jepa_adaptation.py'
+      - '.github/workflows/neural-jepa-continual-adaptation.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: neural-jepa-continual-adaptation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  offline-continual-adaptation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      OMP_NUM_THREADS: '1'
+      MKL_NUM_THREADS: '1'
+      PYTHONPATH: src
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install CPU torch
+        run: python -m pip install 'torch>=2.3,<3' --index-url https://download.pytorch.org/whl/cpu
+      - name: Install ECSA tests and neural dependencies
+        run: python -m pip install -e '.[test,neural-relations]'
+      - name: TDD contracts for original, change detector and continual repair
+        run: python -m pytest -q tests/test_action_jepa.py tests/test_jepa_shift.py tests/test_jepa_adaptation.py
+      - name: Real unannounced recurrent smoke and trigger-positive full run
+        run: |
+          python scripts/benchmarks/run_jepa_adaptation.py \
+            --mode smoke --seed 4 --steps 12 --output results/jepa_recurrence_smoke.json
+          python scripts/benchmarks/run_jepa_adaptation.py \
+            --mode full --seed 13 --output results/jepa_recurrence_seed13.json
+      - name: Assert recovery and separate budgets without oracle-triggering
+        run: |
+          python - <<'PY'
+          import json
+          x=json.load(open('results/jepa_recurrence_seed13.json'))
+          assert x['protocol']=='action_jepa_recurrent_adaptation_v1'
+          assert x['detection']['change_confirmed'] is True
+          a=x['adaptation']
+          assert a['triggered'] is True
+          assert a['new_transition_count']==64
+          assert a['adaptation_validation_actions']==256
+          assert a['replay_memory_examples']<=128
+          assert a['variants']['naive']['encoder_frozen'] is True
+          assert a['variants']['replay']['encoder_frozen'] is True
+          assert a['reference_order_effect']['fresh_cohort'] is True
+          assert a['return_monitor']['monitor_started_after_confirmation'] is True
+          assert a['return_monitor']['calibration_source']=='observed_transitions_at_confirmed_epoch'
+          assert a['return_evidence'] is None or a['return_evidence']['return_to_old_mechanism_proven'] is False
+          assert a['intervention_steps']>=a['new_transition_count']+a['adaptation_validation_actions']
+          print('CONTINUAL JEPA RECURRENCE CONTRACTS VERIFIED; SCIENTIFIC PERFORMANCE IS NOT A GATE')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: action-jepa-recurrent-${{ github.sha }}
+          path: results/jepa_recurrence_*.json
+          if-no-files-found: ignore
