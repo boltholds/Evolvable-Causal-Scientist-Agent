@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 from ecsa.contracts import TheoryPosterior
 
 from ..world_model.contracts import (
@@ -15,6 +17,10 @@ from ..world_model.experiments import (
 )
 from ..world_model.grounding import InteractionGrounder
 from ..world_model.learning_progress import ProgressEvidence
+from ..world_model.effect_attribution import (
+    EffectAttributionLedger, EffectEvidenceStatus,
+    EffectTrialProjector, CohortRef, CollectionMode,
+)
 from ..world_model.relations import NumericRelationAcquisition
 from ..world_model.text_relations import TextRelationAcquisition
 from ..world_model.kernel import (
@@ -35,6 +41,7 @@ class AutonomousScientist:
         perception: PerceptionFrontend,
         relations: NumericRelationAcquisition | None = None,
         text_relations: TextRelationAcquisition | None = None,
+        effect_attribution: EffectAttributionLedger | None = None,
     ) -> None:
         if not isinstance(world_model, WorldModelAcquisitionKernel):
             raise TypeError(
@@ -51,6 +58,11 @@ class AutonomousScientist:
             raise TypeError("relations must be NumericRelationAcquisition")
         if text_relations is not None and not isinstance(text_relations, TextRelationAcquisition):
             raise TypeError("text_relations must be TextRelationAcquisition")
+        if effect_attribution is not None and not isinstance(effect_attribution, EffectAttributionLedger):
+            raise TypeError("effect_attribution must be typed")
+        self.effect_attribution = effect_attribution
+        self._effect_projector = EffectTrialProjector() if effect_attribution is not None else None
+        self._attribution_episode_id = "active-public-episode"
         self.text_relations = text_relations
         self.relations = relations
         self.world_model = world_model
@@ -128,6 +140,34 @@ class AutonomousScientist:
             after,
         )
         update = self.world_model.observe_grounding(grounding)
+        if self.effect_attribution is not None:
+            assert self._effect_projector is not None
+            trials=self._effect_projector.project(transition,grounding,before,after)
+            if trials:
+                self.effect_attribution.observe(
+                    trials,
+                    cohort=CohortRef(
+                        cohort_id=transition.transition_id,
+                        episode_id=self._attribution_episode_id,
+                        protocol_id="public-observational-action-loop",
+                        collection_mode=CollectionMode.PASSIVE,
+                        pre_registered_prediction_id=None,
+                        state_match_group=None,
+                        assigned_action=transition.action,
+                        assignment_scheme_id=None,
+                    ),
+                )
+                supported=set()
+                for trial in trials:
+                    hypotheses=self.effect_attribution.hypotheses(
+                        trial.effect_key,
+                        action_schema_id=trial.action_schema_id,
+                    )
+                    supported.update(
+                        hypothesis.hypothesis_id for hypothesis in hypotheses
+                        if hypothesis.status is EffectEvidenceStatus.OBSERVATIONALLY_SUPPORTED
+                    )
+                update=replace(update,attribution_claim_ids=tuple(sorted(supported)))
         if self.relations is not None:
             self.relations.observe_transition(transition, before, after)
         if self.text_relations is not None:
