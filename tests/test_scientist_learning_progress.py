@@ -92,7 +92,11 @@ def test_failed_actions_count_cost_without_scientific_credit():
     scientist.observe_transition(raw_transition(success=False))
     assert ledger.total_observed==1
     assessed=ledger.assess(GroundAction("again",()),context_signature=())
-    assert assessed.expected_gain==0.
+    assert assessed.expected_gain is not None
+    assert ledger.recent[-1].uncertainty_reduction > 0
+    # Failure refines applicability uncertainty but is NOT independent
+    # confirmation that the action has the hypothesized causal effect.
+    assert ledger.recent[-1].confirmed_hypothesis_ids == ()
     assert ledger.recent[-1].action_cost>0
 
 
