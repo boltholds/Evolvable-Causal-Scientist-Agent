@@ -90,12 +90,12 @@ class LearningProgressLedger:
     storage. This in-memory ledger intentionally does not grow forever.
     """
 
-    def __init__(self, max_recent: int = 256, stagnation_horizon: int = 8):
+    def __init__(self, max_recent: int = 256, stagnation_horizon: int = 8,\n                 min_progress_gain: float = 0.002):
         if type(max_recent) is not int or max_recent < 1:
             raise ValueError("max_recent must be positive")
         if type(stagnation_horizon) is not int or stagnation_horizon < 1:
             raise ValueError("stagnation_horizon must be positive")
-        self.max_recent = max_recent
+        if not isfinite(min_progress_gain) or min_progress_gain < 0:\n            raise ValueError('invalid gain threshold')\n        self.min_progress_gain = min_progress_gain\n        self.max_recent = max_recent
         self.stagnation_horizon = stagnation_horizon
         self._records: deque[ProgressEvidence] = deque()
         self._recent_ids: set[str] = set()
@@ -156,7 +156,7 @@ class LearningProgressLedger:
                     value -= 0.25
             value = max(0.0, value)
             gains.append(value)
-            if value > 1e-12:
+            if value > self.min_progress_gain:
                 idle = 0
             else:
                 idle += 1
