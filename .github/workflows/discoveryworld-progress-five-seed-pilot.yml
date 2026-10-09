@@ -1,0 +1,75 @@
+name: discoveryworld-progress-five-seed-pilot
+
+on:
+  push:
+    branches: [feat/paired-learning-progress-discoveryworld-20261009]
+    paths:
+      - '.github/workflows/discoveryworld-progress-five-seed-pilot.yml'
+  pull_request:
+    paths:
+      - '.github/workflows/discoveryworld-progress-five-seed-pilot.yml'
+  workflow_dispatch:
+
+jobs:
+  five-seed-pilot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      OMP_NUM_THREADS: '2'
+      OPENBLAS_NUM_THREADS: '1'
+      MKL_NUM_THREADS: '2'
+      SDL_VIDEODRIVER: dummy
+      SDL_AUDIODRIVER: dummy
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install ECSA and DiscoveryWorld
+        run: pip install -e '.[test,discoveryworld,world-model-planning,mlmd]'
+      - name: Verify ablation contract
+        run: python -m pytest -q tests/test_discoveryworld_progress_ablation.py
+      - name: Five-seed 64-action paired pilot
+        run: |
+          python -m ecsa.benchmarks.discoveryworld.paired_progress_arena_b \
+            --seeds 0,1,2,3,4 --max-steps 64 --max-ground-actions 64 \
+            --output results/paired_progress_pilot
+      - name: Print complete paired metrics
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import json
+          report = json.loads(Path('results/paired_progress_pilot/paired_summary.json').read_text())
+          for row in report['seeds']:
+              seed=row['seed']
+              print('SEED',seed)
+              for key in ('baseline','progress'):
+                  ep=row[key]
+                  print(key, json.dumps({
+                      'steps':ep['steps'],
+                      'score':ep['official_score_normalized'],
+                      'completed':ep['official_completed_successfully'],
+                      'successes':ep['successes'],
+                      'contracts':ep['contract_count'],
+                      'action_counts':ep['progress_metrics']['action_counts'],
+                      'low_info_failed_retries':ep['progress_metrics']['low_information_failed_repeats'],
+                      'longest_streak':ep['progress_metrics']['longest_exact_action_streak'],
+                      'action_entropy':ep['progress_metrics']['schema_entropy_bits'],
+                  },sort_keys=True))
+              print('DELTA',json.dumps({
+                  'score':row['score_delta'],
+                  'low_info_failed_retries':row['low_information_failed_repeat_delta'],
+                  'successes':row['successful_action_delta'],
+              },sort_keys=True))
+          print('SUMMARY',json.dumps({
+              key:report[key] for key in (
+                  'mean_score_delta','mean_low_information_failed_repeat_delta',
+                  'confirmed_causal_hypothesis_delta','independent_confirmation_status')
+          },sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: five-seed-progress-pilot
+          path: results/paired_progress_pilot/
+          if-no-files-found: ignore

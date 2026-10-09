@@ -26,6 +26,11 @@ from ecsa.world_model.perception.structured import (
 
 from .perception import DiscoveryWorldStructuredDecoder
 from .raw_environment import DiscoveryWorldRawEnvironment
+from .progress_metrics import (
+    ProgressActionEvent,
+    ProgressEpisodeMetrics,
+    summarize_progress_actions,
+)
 
 
 @dataclass(frozen=True)
@@ -53,6 +58,12 @@ class ArenaBResult:
     trainable_numeric_relation_groups: int = 0
     text_relation_samples: int = 0
     trainable_text_schema_groups: int = 0
+    progress_metrics: ProgressEpisodeMetrics | None = None
+    official_score_normalized: float | None = None
+    official_completed_successfully: bool | None = None
+    # The current Arena B loop does not execute independent, prospectively
+    # registered matched interventions; don't invent a causal success count.
+    independently_confirmed_causal_hypotheses: int | None = None
 
 
 def _wire(value):
@@ -95,6 +106,8 @@ def run_autonomous_episode(
     use_affordance_scoring: bool = True,
     use_applicability_selection: bool = True,
     use_lifted_selection: bool = True,
+    use_progress_scoring: bool = False,
+    include_official_evaluation: bool = False,
 ) -> ArenaBResult:
     if scenario != "Reactor Lab" or difficulty != "Normal":
         raise ValueError(
@@ -103,6 +116,8 @@ def run_autonomous_episode(
         )
     if type(max_steps) is not int or max_steps < 1:
         raise ValueError("max_steps must be positive")
+    if type(use_progress_scoring) is not bool or type(include_official_evaluation) is not bool:
+        raise ValueError("policy and evaluator switches must be boolean")
 
     environment = DiscoveryWorldRawEnvironment.reactor_lab_normal(
         seed,
@@ -122,6 +137,7 @@ def run_autonomous_episode(
             use_affordance_scoring=use_affordance_scoring,
             use_applicability_selection=use_applicability_selection,
             use_lifted_selection=use_lifted_selection,
+            use_progress_scoring=use_progress_scoring,
         ),
         perception=perception,
         relations=relations,
@@ -154,6 +170,7 @@ def run_autonomous_episode(
     applicability_brier_total = 0.0
     ready_schema_brier_total = 0.0
     ready_applicability_brier_total = 0.0
+    progress_action_events: list[ProgressActionEvent] = []
 
     while (
         not environment.done
@@ -175,6 +192,10 @@ def run_autonomous_episode(
         schema_probability = history.schema_success_probability(
             experiment.action.schema_id, len(experiment.action.arguments),
         )
+        schema_variance_before = history.schema_uncertainty(
+            experiment.action.schema_id, len(experiment.action.arguments),
+        )
+        same_ground_attempts_before = history.action_attempts(experiment.action)
         likelihood = schema_probability
         lifted_likelihood = schema_probability
         before_perception = perception.perceive(before)
@@ -237,6 +258,17 @@ def run_autonomous_episode(
             after=after,
         )
         update = scientist.observe_transition(transition)
+        variance_delta = schema_variance_before - history.schema_uncertainty(
+            experiment.action.schema_id, len(experiment.action.arguments),
+        )
+        progress_action_events.append(ProgressActionEvent(
+            transition_id=transition.transition_id,
+            schema_id=experiment.action.schema_id,
+            arguments=tuple(arg.thaw() for arg in experiment.action.arguments),
+            success=outcome.success,
+            prior_schema_variance_reduction=variance_delta,
+            context_signature=scientist.experiments.context_signature(before_perception),
+        ))
         evidence_ids.update(update.new_evidence_ids)
         transition_count += 1
         successes += int(outcome.success)
@@ -259,6 +291,9 @@ def run_autonomous_episode(
             {
                 "transition_id": transition.transition_id,
                 "selection_mode": selection_mode,
+                "progress_scoring_enabled": use_progress_scoring,
+                "prequential_variance_reduction": variance_delta,
+                "same_ground_action_attempts_before": same_ground_attempts_before,
                 "schema_success_probability": schema_probability,
                 "applicability_success_probability": likelihood,
                 "lifted_success_probability": lifted_likelihood,
@@ -289,6 +324,24 @@ def run_autonomous_episode(
             },
         )
 
+    final_score = None
+    final_completion = None
+    if include_official_evaluation:
+        # This is the first evaluator call. It is never passed into the
+        # scientist, its action selection, evidence collection or predictions.
+        evaluation = environment.evaluate_after_run()
+        final_score = evaluation.score_normalized
+        final_completion = evaluation.completed_successfully
+        (root / "final_evaluation.json").write_text(
+            json.dumps({
+                "score_normalized": evaluation.score_normalized,
+                "completed_successfully": evaluation.completed_successfully,
+                "steps": evaluation.steps,
+                "scorecard": evaluation.scorecard,
+            }, sort_keys=True, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
     return ArenaBResult(
         steps=environment.steps,
         transitions=transition_count,
@@ -297,6 +350,10 @@ def run_autonomous_episode(
             world_model.contract_hypotheses()
         ),
         successes=successes,
+        progress_metrics=summarize_progress_actions(tuple(progress_action_events)),
+        official_score_normalized=final_score,
+        official_completed_successfully=final_completion,
+        independently_confirmed_causal_hypotheses=None,
         numeric_relation_samples=relations.total_samples,
         text_relation_samples=text_relations.total_samples,
         trainable_text_schema_groups=len(text_relations.ready_schemas()),

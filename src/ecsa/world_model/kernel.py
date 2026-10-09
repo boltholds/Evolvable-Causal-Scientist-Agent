@@ -81,18 +81,28 @@ class WorldModelAcquisitionKernel:
                 key=lambda value: value.argument_index,
             )
         )
-        self._acquisition_steps.append(
-            AcquisitionActionStep(
-                schema_id=update.transition.schema_id,
-                object_refs=tuple(
-                    str(item.argument_value.thaw())
-                    for item in participation
-                ),
-                evidence_id=(
-                    update.transition.outcome_evidence.evidence_id
-                ),
+        # Raw action parameters are not necessarily object identities.
+        # The object-lifted learners accept only nonempty reference tokens.
+        # Keep all raw evidence, but don't fabricate objects from missing,
+        # boolean, floating-point or structured argument values. Skipping
+        # the entire ineligible step also preserves each schema's arity.
+        refs: list[str] = []
+        for item in participation:
+            value = item.argument_value.thaw()
+            if type(value) is str and value.strip():
+                refs.append(value)
+            elif type(value) is int:
+                refs.append(str(value))
+            else:
+                break
+        else:
+            self._acquisition_steps.append(
+                AcquisitionActionStep(
+                    schema_id=update.transition.schema_id,
+                    object_refs=tuple(refs),
+                    evidence_id=update.transition.outcome_evidence.evidence_id,
+                )
             )
-        )
 
         added: list[str] = []
         updated: list[str] = []
