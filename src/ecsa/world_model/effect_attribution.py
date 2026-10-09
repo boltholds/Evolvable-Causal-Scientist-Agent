@@ -227,6 +227,8 @@ class EffectAttributionLedger:
         self.min_effect_contrast=min_effect_contrast
         self._items: deque[tuple[FeatureTrial,CohortRef]] = deque()
         self._ids: set[str]=set()
+        self.intervention_actions_executed = 0
+        self._verified: dict[tuple[str,str], EffectClaim] = {}
 
     @property
     def recent(self) -> tuple[FeatureTrial,...]:
@@ -248,6 +250,74 @@ class EffectAttributionLedger:
                 self._ids.remove(previous.evidence_id)
             self._items.append((row,cohort))
             self._ids.add(row.evidence_id)
+
+    def confirm_intervention(
+        self,
+        effect_key: str,
+        *,
+        candidate: "GroundAction",
+        evidence: tuple[FeatureTrial, ...],
+        cohort: CohortRef,
+    ) -> EffectClaim:
+        """Accept a *protocol-attested* independent randomized contrast.
+
+        The caller must supply actual public execution evidence. The claim is
+        scoped to the observed context, never an unrestricted causal proof.
+        """
+        from .contracts import GroundAction
+        if not isinstance(candidate, GroundAction):
+            raise TypeError("typed candidate action required")
+        if not isinstance(cohort, CohortRef) or cohort.collection_mode is not CollectionMode.CONTROLLED:
+            raise ValueError("controlled independent intervention cohort required")
+        if not (cohort.pre_registered_prediction_id and cohort.assignment_scheme_id
+                and cohort.state_match_group):
+            raise ValueError("controlled cohort needs registered predictions and action assignment")
+        if not isinstance(evidence, tuple) or not evidence or not all(
+            isinstance(e, FeatureTrial) for e in evidence
+        ):
+            raise ValueError("independent typed intervention evidence required")
+        if cohort.episode_id in {existing.episode_id for _,existing in self._items}:
+            raise ValueError("disjoint intervention episode required")
+        ids=tuple(e.evidence_id for e in evidence)
+        if len(set(ids)) != len(ids) or self._ids.intersection(ids):
+            raise ValueError("disjoint intervention trial IDs required")
+        if any(e.effect_key!=effect_key or not e.observed or e.changed is None for e in evidence):
+            raise ValueError("all intervention outcomes must be observed for the target")
+        observed_claims=self.hypotheses(effect_key,action_schema_id=candidate.schema_id)
+        if not any(c.explanation in (EffectExplanation.ACTION_DEPENDENT,EffectExplanation.INTERACTION)
+                   and c.status is EffectEvidenceStatus.OBSERVATIONALLY_SUPPORTED
+                   for c in observed_claims):
+            raise ValueError("independent intervention requires a previously supported proposal")
+        treatment=[e for e in evidence if e.action_schema_id==candidate.schema_id]
+        controls=[e for e in evidence if e.action_schema_id!=candidate.schema_id]
+        if len(treatment)<self.min_support or len(controls)<self.min_support:
+            raise ValueError("matched treatment and controls with sufficient trials required")
+        matched={e.context_signature for e in treatment}&{e.context_signature for e in controls}
+        if not matched:
+            raise ValueError("matched public initial contexts required")
+        treatment=[e for e in treatment if e.context_signature in matched]
+        controls=[e for e in controls if e.context_signature in matched]
+        if len(treatment)<self.min_support or len(controls)<self.min_support:
+            raise ValueError("matched intervention context has insufficient controls")
+        rate_t=(1+sum(bool(e.changed) for e in treatment))/(len(treatment)+2)
+        rate_c=(1+sum(bool(e.changed) for e in controls))/(len(controls)+2)
+        confirmed=(rate_t-rate_c)>=self.min_effect_contrast
+        result=EffectClaim(
+            effect_key, candidate.schema_id, EffectExplanation.ACTION_DEPENDENT,
+            (EffectEvidenceStatus.INTERVENTIONALLY_SUPPORTED if confirmed
+             else EffectEvidenceStatus.CONTRADICTED),
+            tuple(e.evidence_id for e in treatment+controls) if confirmed else (),
+            () if confirmed else tuple(e.evidence_id for e in treatment+controls),
+            ("independent externally attested controlled assignment",
+             f"protocol:{cohort.protocol_id}",
+             f"state_match_group:{cohort.state_match_group}",
+             "valid only for tested public contexts"),
+            tuple(sorted(matched)),
+        )
+        # Both arms count toward the actual experiment budget.
+        self.intervention_actions_executed += len(evidence)
+        self._verified[(effect_key,candidate.schema_id)]=result
+        return result
 
     def hypotheses(self, effect_key: str, *, action_schema_id: str) -> tuple[EffectClaim,...]:
         if not effect_key or not action_schema_id:
