@@ -227,6 +227,10 @@ class DiscoveryWorldRawEnvironment:
             ),
         )
 
+    def evaluate_after_run(self):
+        """Evaluator-only official scorecard. Never call during agent steps."""
+        return self._environment.evaluate_after_run()
+
     @property
     def done(self) -> bool:
         return self._environment.done
