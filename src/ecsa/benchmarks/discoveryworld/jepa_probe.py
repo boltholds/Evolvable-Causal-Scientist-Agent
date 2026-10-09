@@ -5,7 +5,7 @@ The heldout seed is never seen in neural training, model selection or baselines.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from pathlib import Path
 import argparse
 import json
@@ -37,29 +37,49 @@ class ProbeConfig:
             raise ValueError('ridge_lambda must be a finite positive number')
 
 
+def _improvement(mse: float, persistence: float) -> float | None:
+    # Never report a perfect gain when no observed change exists to predict.
+    return float(1.-mse/persistence) if persistence>1e-12 else None
+
+
 def _zero_actions(samples: ReplayTransitions) -> ReplayTransitions:
     return ReplayTransitions(samples.before, np.zeros_like(samples.actions),
                              samples.after, samples.action_names, samples.steps)
 
 
-def _alternatives(train: ReplayTransitions, heldout: ReplayTransitions) -> tuple[np.ndarray, np.ndarray]:
-    """Alternative action packets are public train examples of OTHER action types.
+def _alternatives(train: ReplayTransitions) -> dict[str, np.ndarray]:
+    """Represent ALL distinct observed action types, not first lexicographic foil.
 
-    Cannot pretend that evaluating these counterfactual packets demonstrates
-    causal effects; this is only a conditional prediction discrimination score.
+    Each representative packet comes from a training transition. Its arguments
+    are NOT necessarily applicable in a heldout state; therefore this is an
+    observational ranking diagnostic, NOT a counterfactual success metric.
     """
     catalog: dict[str, np.ndarray] = {}
     for label, values in zip(train.action_names, train.actions):
         catalog.setdefault(label, values)
-    ordered = sorted(catalog)
-    alternatives = np.zeros_like(heldout.actions)
-    eligible = np.zeros(len(heldout.actions), dtype=bool)
-    for i, label in enumerate(heldout.action_names):
-        other = next((x for x in ordered if x != label), None)
-        if other is not None:
-            alternatives[i] = catalog[other]
-            eligible[i] = True
-    return alternatives, eligible
+    return {label: catalog[label] for label in sorted(catalog)}
+
+
+def _summarize_contrasts(heldout: ReplayTransitions, comparisons: list[tuple[str,np.ndarray]]) -> dict:
+    """Micro and macro diagnostics computed over every eligible logged type."""
+    by_row: list[list[float]]=[[] for _ in heldout.action_names]
+    for alternative_label, relative in comparisons:
+        for i, score in enumerate(relative):
+            if heldout.action_names[i]!=alternative_label:
+                by_row[i].append(float(score))
+    by_type: dict[str,list[float]]={}
+    for name, scores in zip(heldout.action_names,by_row):
+        by_type.setdefault(name,[]).extend(scores)
+    by_type_mean={name:float(np.mean(scores)) for name,scores in sorted(by_type.items()) if scores}
+    all_scores=[score for scores in by_row for score in scores]
+    return {
+        'action_choice_accuracy':float(np.mean(all_scores)) if all_scores else .5,
+        'action_choice_macro_accuracy':float(np.mean(tuple(by_type_mean.values()))) if by_type_mean else .5,
+        'action_choice_by_type':by_type_mean,
+        'action_choice_pairs':len(all_scores),
+        'action_choice_eligible_rows':sum(bool(scores) for scores in by_row),
+        'action_choice_is_counterfactual':False,
+    }
 
 
 def score_actions(model: ActionJEPA, train: ReplayTransitions,
@@ -77,32 +97,31 @@ def score_actions(model: ActionJEPA, train: ReplayTransitions,
         prediction = model.predict_tensor(z, act)
         persistence = float((z-truth).square().mean())
         mse = float((prediction-truth).square().mean())
-        alternatives, mask = _alternatives(train, heldout)
-        if no_actions:
-            alternatives = np.zeros_like(alternatives)
-        wrong = model.predict_tensor(z, torch.as_tensor(alternatives,device=device))
         true_distance = (prediction-truth).square().sum(dim=1).cpu().numpy()
-        wrong_distance = (wrong-truth).square().sum(dim=1).cpu().numpy()
-    if np.any(mask):
-        accuracy = float(np.mean((true_distance[mask] < wrong_distance[mask]).astype(np.float64)
-                                 + .5 * (true_distance[mask] == wrong_distance[mask])))
-    else:
-        accuracy = .5
+        comparisons=[]
+        for label,prototype in _alternatives(train).items():
+            wrong_actions=(torch.zeros_like(act) if no_actions else torch.as_tensor(
+                np.broadcast_to(prototype,(len(heldout.before),len(prototype))).copy(),device=device))
+            wrong=model.predict_tensor(z,wrong_actions)
+            wrong_distance=(wrong-truth).square().sum(dim=1).cpu().numpy()
+            comparisons.append((label,(true_distance<wrong_distance).astype(float)+
+                                .5*(true_distance==wrong_distance)))
     with torch.no_grad():
         latents = model.encoder(torch.as_tensor(heldout.before,device=device)).float().cpu().numpy()
     centered=latents-latents.mean(axis=0,keepdims=True)
     singular=np.linalg.svd(centered,compute_uv=False)
     spectrum=singular.astype(np.float64)**2
     rank=float(spectrum.sum()**2/max(np.square(spectrum).sum(),1e-12))
-    return {
+    result = {
         'heldout_mse': mse,
         'persistence_mse': persistence,
-        'improvement_over_persistence': float(1.-mse/max(persistence,1e-12)),
-        'action_choice_accuracy': accuracy,
-        'action_choice_pairs': int(mask.sum()),
+        'improvement_over_persistence': _improvement(mse,persistence),
         'mean_latent_std': float(latents.std(axis=0).mean()),
         'effective_rank': rank,
+        'collapse_warning':bool(rank<1.5),
     }
+    result.update(_summarize_contrasts(heldout,comparisons))
+    return result
 
 
 class _RawRidge:
@@ -124,18 +143,58 @@ def _score_raw_ridge(model: _RawRidge, train: ReplayTransitions, heldout: Replay
     true=heldout.after.astype(np.float64)
     mse=float(np.square(predicted-true).mean())
     persistence=float(np.square(heldout.before-true).mean())
-    alternatives,mask=_alternatives(train,heldout)
-    wrong=model.predict(heldout.before, alternatives)
     true_dist=np.square(predicted-true).sum(axis=1)
-    wrong_dist=np.square(wrong-true).sum(axis=1)
-    accuracy=(float(np.mean((true_dist[mask]<wrong_dist[mask]).astype(np.float64)
-               +.5*(true_dist[mask]==wrong_dist[mask]))) if np.any(mask) else .5)
-    return {
+    comparisons=[]
+    for label,prototype in _alternatives(train).items():
+        candidates=np.broadcast_to(prototype,(len(heldout.before),len(prototype)))
+        wrong=model.predict(heldout.before,candidates)
+        wrong_dist=np.square(wrong-true).sum(axis=1)
+        comparisons.append((label,(true_dist<wrong_dist).astype(float)+.5*(true_dist==wrong_dist)))
+    result={
         'heldout_mse':mse,
         'persistence_mse':persistence,
-        'improvement_over_persistence':float(1.-mse/max(persistence,1e-12)),
-        'action_choice_accuracy':accuracy,
-        'action_choice_pairs':int(mask.sum()),
+        'improvement_over_persistence':_improvement(mse,persistence),
+        'public_delta_mse':mse,
+        'public_delta_persistence_mse':persistence,
+        'public_delta_improvement':_improvement(mse,persistence),
+        'public_delta_target_nontrivial':bool(persistence>1e-12),
+        'public_delta_heldout_count':len(heldout.before),
+    }
+    result.update(_summarize_contrasts(heldout,comparisons))
+    return result
+
+
+def _public_delta_readout(model: ActionJEPA, train: ReplayTransitions,
+                          heldout: ReplayTransitions, *, no_actions: bool) -> dict[str,float|int]:
+    """Frozen JEPA predicted z -> observed next-feature delta via train-only ridge.
+
+    All neural arms predict the SAME *public* feature coordinates, unlike
+    their own self-encoded latent MSEs. No oracle features or test fitting.
+    """
+    device=next(model.parameters()).device
+
+    def latents(rows:ReplayTransitions)->np.ndarray:
+        with torch.no_grad():
+            pre=torch.as_tensor(rows.before,device=device)
+            actions=torch.zeros_like(torch.as_tensor(rows.actions,device=device)) if no_actions else torch.as_tensor(rows.actions,device=device)
+            predictions=model.predict_tensor(model.encoder(pre),actions)
+        return predictions.cpu().numpy().astype(np.float64)
+    ztrain=latents(train)
+    ztest=latents(heldout)
+    features=np.c_[ztrain,np.ones(len(ztrain))]
+    target=(train.after-train.before).astype(np.float64)
+    identity=np.eye(features.shape[1]);identity[-1,-1]=1e-8
+    coef=np.linalg.solve(features.T@features+identity,features.T@target)
+    predicted_delta=np.c_[ztest,np.ones(len(ztest))]@coef
+    true_delta=(heldout.after-heldout.before).astype(np.float64)
+    mse=float(np.square(predicted_delta-true_delta).mean())
+    persistence=float(np.square(true_delta).mean())
+    return {
+        'public_delta_mse':mse,
+        'public_delta_persistence_mse':persistence,
+        'public_delta_improvement':_improvement(mse,persistence),
+        'public_delta_target_nontrivial':bool(persistence>1e-12),
+        'public_delta_heldout_count':len(heldout.before),
     }
 
 
@@ -156,6 +215,7 @@ def run_probe(splits: ReplaySplits, config: ProbeConfig, *, device: str) -> dict
                                 shuffle_actions=(name=='action_shuffled'))
         metrics=score_actions(model,splits.train,splits.test,no_actions=(name=='no_action'))
         valid=score_actions(model,splits.train,splits.validation,no_actions=(name=='no_action'))
+        metrics.update(_public_delta_readout(model,train,splits.test,no_actions=(name=='no_action')))
         arms[name] = dict(**metrics, validation_improvement_over_persistence=valid['improvement_over_persistence'],
                           training_start_loss=report.start_loss,training_end_loss=report.end_loss)
     baseline=_RawRidge(splits.train,config.ridge_lambda)
@@ -172,6 +232,7 @@ def run_probe(splits: ReplaySplits, config: ProbeConfig, *, device: str) -> dict
         'train_action_types':sorted(set(splits.train.action_names)),
         'test_action_types':sorted(set(splits.test.action_names)),
         'device':device,
+        'shared_public_target':True,
         'config':{
             'steps':config.steps,'batch_size':config.batch_size,
             'latent_dim':config.latent_dim,'hidden_dim':config.hidden_dim,
@@ -184,6 +245,9 @@ def run_probe(splits: ReplaySplits, config: ProbeConfig, *, device: str) -> dict
             'Hashing public JSON is fixed manual featurization; learning raw visual/text perception remains future work.',
             'Different JEPA arms learn distinct latent coordinate frames: compare within-arm ratios and action ranking, not raw MSE across arms.',
             'Wrong-action discrimination is observational and does not demonstrate counterfactual causality.',
+            'Action alternatives are representative observed packets per action type; applicability of their arguments is NOT established.',
+            'Public delta readout is trained only on training split; reported error uses shared public targets across arms.',
+            'Effective rank below 1.5 is a collapse warning, not a causal capacity assessment.',
             'A single-seed smoke split is temporally correlated and proves no cross-seed generalization.',
             'Study mode excludes all heldout seed transitions from training and validation.',
             'Identical cold/reuse episodes from one seed are never counted as independent seeds.',
@@ -195,13 +259,39 @@ def run_probe(splits: ReplaySplits, config: ProbeConfig, *, device: str) -> dict
 def run_probe_from_logs(log_root: Path, *, output: Path, mode: str='smoke',arm: str='cold',
                         device: str='cpu',observation_dim: int=256,action_dim: int=128,
                         steps: int=700,batch_size: int=128,latent_dim: int=8,
-                        hidden_dim: int=64,seed: int=0) -> dict:
-    replay_config=ReplayConfig(observation_dim=observation_dim,action_dim=action_dim)
-    splits=load_splits(log_root,replay_config,mode=mode,arm=arm)
+                        hidden_dim: int=64,seed: int=0,
+                        representation: str='public_hash') -> dict:
+    if representation not in ('public_hash','induced_interface'):
+        raise ValueError('representation must be public_hash or induced_interface')
+    if representation=='induced_interface':
+        from .interface_induction import load_interface_splits
+        induction=load_interface_splits(log_root,mode=mode,arm=arm,
+            observation_dim=observation_dim,action_dim=action_dim)
+        splits=induction.splits
+    else:
+        replay_config=ReplayConfig(observation_dim=observation_dim,action_dim=action_dim)
+        splits=load_splits(log_root,replay_config,mode=mode,arm=arm)
     report=run_probe(splits,ProbeConfig(steps=steps,batch_size=batch_size,
                                        latent_dim=latent_dim,hidden_dim=hidden_dim,seed=seed),device=device)
     report['feature_widths']={'observation':observation_dim,'action':action_dim}
     report['source_arm']=arm
+    report['representation']=representation
+    if representation=='induced_interface':
+        report['contract_induction']={
+            'train_seed_ids':list(splits.train_seeds),
+            'train_contract_count':len(induction.contracts),
+            'proposals':[asdict(c) for c in induction.contracts],
+            'validation':asdict(induction.contract_validation),
+            'heldout':asdict(induction.contract_heldout),
+            'feature_vocabulary_size':len(induction.feature_vocabulary),
+            'unseen_test_properties':list(induction.unseen_test_properties),
+            'contracts_are_causal_proofs':False,
+            'causally_validated':False,
+        }
+        report['limitations'].append(
+            'Induced interfaces are observational hypotheses; heldout effect matching is not randomized causal identification.')
+        report['limitations'].append(
+            'A public transport ID is used to align an object within an observation; identities are not model features.')
     output=Path(output)
     output.parent.mkdir(parents=True,exist_ok=True)
     output.write_text(json.dumps(report,indent=2,sort_keys=True)+'\n',encoding='utf-8')
@@ -221,12 +311,13 @@ def main(argv: list[str] | None=None) -> int:
     parser.add_argument('--action-dim',type=int,default=128)
     parser.add_argument('--latent-dim',type=int,default=8)
     parser.add_argument('--hidden-dim',type=int,default=64)
+    parser.add_argument('--representation',choices=('public_hash','induced_interface'),default='public_hash')
     parser.add_argument('--output',type=Path,required=True)
     args=parser.parse_args(argv)
     report=run_probe_from_logs(args.runs,output=args.output,mode=args.mode,arm=args.arm,
         device=args.device,observation_dim=args.observation_dim,action_dim=args.action_dim,
         steps=args.steps,batch_size=args.batch_size,latent_dim=args.latent_dim,
-        hidden_dim=args.hidden_dim,seed=args.seed)
+        hidden_dim=args.hidden_dim,seed=args.seed,representation=args.representation)
     print(json.dumps({k:v for k,v in report.items() if k not in ('limitations','train_action_types','test_action_types')},indent=2))
     return 0
 
