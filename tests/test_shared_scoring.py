@@ -86,3 +86,23 @@ def test_reject_mismatched_forecast_frame():
                                           "shared-public-outcomes:other"),)},
             actions=("A",),
         )
+
+
+def test_known_numeric_0_1_is_not_retyped_as_binary():
+    from ecsa.world_model.shared_evaluation import TargetKind
+    keys=("measurement","categorical","action:success")
+    kinds=(TargetKind.NUMERIC_DELTA,TargetKind.CATEGORICAL_CHANGE,
+           TargetKind.ACTION_SUCCESS)
+    targets=(
+        SharedTarget((0.,0.,1.),(True,True,True),0,keys,kinds=kinds),
+        SharedTarget((1.,1.,1.),(True,True,True),0,keys,kinds=kinds),
+    )
+    predictions=(
+        SharedForecast((0.,0.,1.),(True,True,True),keys,FINGERPRINT),
+        SharedForecast((.8,1.,1.),(True,True,True),keys,FINGERPRINT),
+    )
+    result=SharedEvaluation.score(targets,{"model":predictions},
+                                  actions=("A","B"))["model"]
+    assert result.scored_numeric_count==2
+    assert result.scored_binary_count==2
+    assert result.numeric_normalized_mse is not None
