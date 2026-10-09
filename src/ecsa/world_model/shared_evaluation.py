@@ -64,12 +64,16 @@ class SharedTarget:
     observed_mask: tuple[bool,...]
     unseen_feature_count: int
     coordinate_ids: tuple[str,...]
+    kinds: tuple[TargetKind,...] = ()
 
     def __post_init__(self):
         if not (len(self.values)==len(self.observed_mask)==len(self.coordinate_ids)):
             raise ValueError("coordinate/mask width mismatch")
         if any(not isfinite(value) for value in self.values):
             raise ValueError("finite target values required")
+        if self.kinds and (len(self.kinds)!=len(self.coordinate_ids) or
+            not all(isinstance(k,TargetKind) for k in self.kinds)):
+            raise ValueError('coordinate types must match frozen target frame')
         if any(type(v) is not bool for v in self.observed_mask):
             raise TypeError("target mask must be boolean")
         if type(self.unseen_feature_count) is not int or self.unseen_feature_count<0:
@@ -180,7 +184,8 @@ class SharedOutcomeFrame:
                 values.append(float(value))
                 mask.append(True)
         return SharedTarget(tuple(values),tuple(mask),unseen,
-                            tuple(c.key for c in self.coordinates))
+                            tuple(c.key for c in self.coordinates),
+                            tuple(c.kind for c in self.coordinates))
 
 
 @dataclass(frozen=True)
@@ -242,6 +247,8 @@ class SharedEvaluation:
         frame_ids=truth[0].coordinate_ids
         if any(t.coordinate_ids!=frame_ids for t in truth):
             raise ValueError("common target frame dimensions required")
+        if any(target.kinds!=truth[0].kinds for target in truth):
+            raise ValueError('shared typed target frame required')
         frames={
             f.frame_fingerprint for collection in forecasts.values()
             for f in collection
@@ -278,6 +285,10 @@ class SharedEvaluation:
                     if target.observed_mask[j]
                 ]
                 if key=="action:success":
+                    continue
+                if truth[0].kinds:
+                    if truth[0].kinds[j] in (TargetKind.BOOLEAN_CHANGE, TargetKind.CATEGORICAL_CHANGE):
+                        binary_feature.add(key)
                     continue
                 if samples and all(v in (0.0,1.0) for v in samples):
                     binary_feature.add(key)
