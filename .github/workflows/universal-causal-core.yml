@@ -10,6 +10,8 @@ on:
       - 'tests/test_progress_selection.py'
       - 'tests/test_scientist_learning_progress.py'
       - 'tests/test_generic_learning_progress_arena.py'
+      - 'tests/test_effect_attribution_*.py'
+      - 'tests/test_scientist_effect_attribution.py'
       - '.github/workflows/universal-causal-core.yml'
   pull_request:
     paths:
@@ -19,6 +21,8 @@ on:
       - 'tests/test_progress_selection.py'
       - 'tests/test_scientist_learning_progress.py'
       - 'tests/test_generic_learning_progress_arena.py'
+      - 'tests/test_effect_attribution_*.py'
+      - 'tests/test_scientist_effect_attribution.py'
       - '.github/workflows/universal-causal-core.yml'
   workflow_dispatch:
 
@@ -43,6 +47,8 @@ jobs:
               "test_learning_progress.py", "test_progress_selection.py",
               "test_scientist_learning_progress.py", "test_generic_learning_progress_arena.py",
               "test_world_model_experiments.py", "test_autonomous_scientist.py",
+              "test_effect_attribution_projection.py", "test_effect_attribution_hypotheses.py",
+              "test_effect_attribution_interventions.py", "test_scientist_effect_attribution.py",
           )]
           present = [str(p) for p in paths if p.exists()]
           raise SystemExit(subprocess.call([sys.executable, "-m", "pytest", "-q", *present]))
