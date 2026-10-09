@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from hashlib import blake2b
 from math import isfinite
 from typing import Protocol
 
@@ -37,10 +38,16 @@ def _public_input(
             if type(v) in (int,float,bool):
                 values.append(float(v))
     values.extend((float(len(action.arguments)),1.))
-    # Stable finite sketch rather than depending on varying observation width.
-    result=np.zeros(32,dtype=np.float64)
+    # Stable feature projection. Action symbols are opaque IDs supplied by
+    # the public transport, not semantically interpreted by core ECSA.
+    result=np.zeros(128,dtype=np.float64)
     for j,v in enumerate(values):
-        if isfinite(v):result[j%32]+=np.clip(v,-1e4,1e4)
+        if isfinite(v):
+            result[j%64]+=np.clip(v,-1e4,1e4)
+    action_key=action.schema_id.encode("utf-8")
+    digest=blake2b(action_key,digest_size=8,person=b"ecsa-act").digest()
+    slot=64 + int.from_bytes(digest[:4],"little")%64
+    result[slot]+=1.0 if digest[4]&1 else -1.0
     return tuple(float(x) for x in result)
 
 
