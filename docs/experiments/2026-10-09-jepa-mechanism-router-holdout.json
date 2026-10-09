@@ -1,0 +1,59 @@
+{
+  "protocol": "jepa_mechanism_router_v1",
+  "evaluation": "fresh_holdout_after_source_lock",
+  "source_hashes": "8d0be2152044a7e90b8762193a2819ef74fb38bf5fa055face319d8383041683  /mnt/data/ecsa_router_work/src/ecsa/experimental/jepa_mechanism_router.py\n71713442a5ecf03ab30d6ef43b723b6bd94e296c5a995cb249f3fe9f6393eab6  /mnt/data/ecsa_router_work/src/ecsa/experimental/jepa_router_arena.py\n2269be617547db1e9a0f6329260bd56cebdd34610f4028d4e4138f7092c51ee5  /mnt/data/ecsa_router_work/src/ecsa/experimental/jepa_router_world.py\n",
+  "seeds": [
+    24,
+    25,
+    26,
+    27,
+    28,
+    29
+  ],
+  "n_seeds": 6,
+  "proposed": 6,
+  "admitted": 6,
+  "false_proposal_attempts": 0,
+  "false_admissions": 0,
+  "majority_recall": 6,
+  "recurrence_correct_last20": [
+    16,
+    18,
+    20,
+    17,
+    20,
+    20
+  ],
+  "known_additive_after_gated": [
+    8,
+    20,
+    16,
+    15,
+    20,
+    20
+  ],
+  "known_additive_after_new": [
+    11,
+    12,
+    15,
+    0,
+    19,
+    20
+  ],
+  "novelty_delay": [
+    18,
+    6,
+    24,
+    16,
+    7,
+    21
+  ],
+  "active_actions": [
+    640,
+    640,
+    640,
+    640,
+    640,
+    640
+  ]
+}
