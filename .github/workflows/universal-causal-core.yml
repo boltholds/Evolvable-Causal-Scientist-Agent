@@ -12,6 +12,8 @@ on:
       - 'tests/test_generic_learning_progress_arena.py'
       - 'tests/test_effect_attribution_*.py'
       - 'tests/test_scientist_effect_attribution.py'
+      - 'tests/test_shared_*.py'
+      - 'tests/test_discoveryworld_shared_probe.py'
       - '.github/workflows/universal-causal-core.yml'
   pull_request:
     paths:
@@ -23,6 +25,8 @@ on:
       - 'tests/test_generic_learning_progress_arena.py'
       - 'tests/test_effect_attribution_*.py'
       - 'tests/test_scientist_effect_attribution.py'
+      - 'tests/test_shared_*.py'
+      - 'tests/test_discoveryworld_shared_probe.py'
       - '.github/workflows/universal-causal-core.yml'
   workflow_dispatch:
 
@@ -36,7 +40,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install core test dependencies
-        run: pip install -e '.[test]'
+        run: pip install -e '.[test]' 'numpy>=1.26,<3'
       - name: Universal learning progress and regression checks
         run: |
           python - <<'PY'
@@ -49,6 +53,9 @@ jobs:
               "test_world_model_experiments.py", "test_autonomous_scientist.py",
               "test_effect_attribution_projection.py", "test_effect_attribution_hypotheses.py",
               "test_effect_attribution_interventions.py", "test_scientist_effect_attribution.py",
+              "test_shared_outcome_frame.py", "test_shared_predictive_adapters.py",
+              "test_shared_scoring.py", "test_shared_scoring_two_domains.py",
+              "test_discoveryworld_shared_probe.py",
           )]
           present = [str(p) for p in paths if p.exists()]
           raise SystemExit(subprocess.call([sys.executable, "-m", "pytest", "-q", *present]))
