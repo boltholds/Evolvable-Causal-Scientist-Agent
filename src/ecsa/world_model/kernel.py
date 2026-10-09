@@ -26,6 +26,7 @@ class WorldModelUpdate:
     rejected_contract_ids: tuple[str, ...] = ()
     learner_failures: tuple[LearnerFailure, ...] = ()
     contracts: tuple[WorldContractHypothesis, ...] = ()
+    attribution_claim_ids: tuple[str, ...] = ()
 
 
 class WorldModelAcquisitionKernel:
