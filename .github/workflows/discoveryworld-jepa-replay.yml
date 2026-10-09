@@ -1,0 +1,66 @@
+name: discoveryworld-jepa-public-replay
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/ecsa/experimental/action_jepa.py'
+      - 'src/ecsa/benchmarks/discoveryworld/jepa_replay.py'
+      - 'src/ecsa/benchmarks/discoveryworld/jepa_probe.py'
+      - 'tests/test_discoveryworld_jepa_probe.py'
+      - 'tests/test_discoveryworld_jepa_real.py'
+      - '.github/workflows/discoveryworld-jepa-replay.yml'
+  pull_request:
+    paths:
+      - 'src/ecsa/experimental/action_jepa.py'
+      - 'src/ecsa/benchmarks/discoveryworld/jepa_replay.py'
+      - 'src/ecsa/benchmarks/discoveryworld/jepa_probe.py'
+      - 'tests/test_discoveryworld_jepa_probe.py'
+      - 'tests/test_discoveryworld_jepa_real.py'
+      - '.github/workflows/discoveryworld-jepa-replay.yml'
+  workflow_dispatch:
+
+jobs:
+  replay-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install CPU PyTorch
+        run: python -m pip install 'torch>=2.3,<3' --index-url https://download.pytorch.org/whl/cpu
+      - name: Install tests and neural dependencies
+        run: python -m pip install -e '.[test,neural-relations]'
+      - name: Run all public-replay and synthetic JEPA regression tests
+        env:
+          OMP_NUM_THREADS: '2'
+          MKL_NUM_THREADS: '2'
+          OPENBLAS_NUM_THREADS: '1'
+        run: python -m pytest -q tests/test_discoveryworld_jepa_probe.py tests/test_action_jepa.py
+      - name: Validate CLI help
+        run: python -m ecsa.benchmarks.discoveryworld.jepa_probe --help
+
+  real-discoveryworld-observation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SDL_VIDEODRIVER: dummy
+      SDL_AUDIODRIVER: dummy
+      OMP_NUM_THREADS: '2'
+      MKL_NUM_THREADS: '2'
+      OPENBLAS_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned DiscoveryWorld without torch CUDA packages
+        run: |
+          python -m pip install 'torch>=2.3,<3' --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -e '.[test,neural-relations,discoveryworld]'
+      - name: Verify actual Reactor Lab public observation encoding
+        run: |
+          python -c 'import discoveryworld; print("Official DiscoveryWorld import OK")'
+          python -m pytest -q tests/test_discoveryworld_jepa_real.py

@@ -46,9 +46,12 @@ class JepaConfig:
 class ActionJEPA(nn.Module):
     """Small online encoder, EMA target encoder, action-conditioned predictor."""
 
-    def __init__(self, observation_dim: int, config: JepaConfig) -> None:
+    def __init__(self, observation_dim: int, config: JepaConfig, *, action_dim: int | None = None) -> None:
         super().__init__()
         self.config = config
+        self.action_dim = len(_ACTIONS) if action_dim is None else action_dim
+        if type(self.action_dim) is not int or self.action_dim < 1:
+            raise ValueError("action_dim must be a positive integer")
         self.encoder = nn.Sequential(
             nn.Linear(observation_dim, config.hidden_dim), nn.SiLU(),
             nn.Linear(config.hidden_dim, config.hidden_dim), nn.SiLU(),
@@ -57,14 +60,14 @@ class ActionJEPA(nn.Module):
         self.target_encoder = deepcopy(self.encoder)
         self.target_encoder.requires_grad_(False)
         self.predictor = nn.Sequential(
-            nn.Linear(config.latent_dim + len(_ACTIONS), config.hidden_dim),
+            nn.Linear(config.latent_dim + self.action_dim, config.hidden_dim),
             nn.SiLU(),
             nn.Linear(config.hidden_dim, config.hidden_dim), nn.SiLU(),
             nn.Linear(config.hidden_dim, config.latent_dim),
         )
 
     def predict_tensor(self, encoded: Tensor, actions: Tensor) -> Tensor:
-        if encoded.ndim != 2 or actions.shape != (len(encoded), len(_ACTIONS)):
+        if encoded.ndim != 2 or actions.shape != (len(encoded), self.action_dim):
             raise ValueError("expected [N, latent] and [N, actions]")
         return encoded + self.predictor(torch.cat((encoded, actions), dim=1))
 
@@ -114,7 +117,7 @@ def train_jepa(
         raise ValueError("need at least two transitions")
     torch.manual_seed(config.seed)
     rng = np.random.default_rng(config.seed)
-    model = ActionJEPA(data.before.shape[1], config).to(device)
+    model = ActionJEPA(data.before.shape[1], config, action_dim=data.actions.shape[1]).to(device)
     optimizer = torch.optim.AdamW(
         list(model.encoder.parameters()) + list(model.predictor.parameters()),
         lr=config.lr, weight_decay=1e-4,
