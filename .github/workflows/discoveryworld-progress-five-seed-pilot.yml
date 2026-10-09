@@ -5,6 +5,9 @@ on:
     branches: [feat/paired-learning-progress-discoveryworld-20261009]
     paths:
       - '.github/workflows/discoveryworld-progress-five-seed-pilot.yml'
+  pull_request:
+    paths:
+      - '.github/workflows/discoveryworld-progress-five-seed-pilot.yml'
   workflow_dispatch:
 
 jobs:
