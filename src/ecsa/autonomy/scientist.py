@@ -111,6 +111,11 @@ class AutonomousScientist:
                 "transition must be InteractionTransition"
             )
         before = self.perception.perceive(transition.before)
+        signature = (transition.action.schema_id, len(transition.action.arguments))
+        prior_uncertainty = (
+            self.experiments.history.schema_uncertainty(*signature)
+            if self.experiments.use_progress_scoring else 0.0
+        )
         self.experiments.record_outcome(
             transition.action,
             success=transition.outcome.success,
@@ -145,7 +150,13 @@ class AutonomousScientist:
                 before_signature=state_signature(before),
                 after_signature=state_signature(after),
                 predictive_gain=None,
-                uncertainty_reduction=0.0,
+                # Prospective Beta-Bernoulli schema uncertainty was frozen
+                # before observing this outcome; repeated trials naturally
+                # have diminishing statistical information value.
+                uncertainty_reduction=max(
+                    0.0,
+                    prior_uncertainty - self.experiments.history.schema_uncertainty(*signature),
+                ),
                 confirmed_hypothesis_ids=(),
                 contradicted_hypothesis_ids=(),
                 action_cost=1.0,
