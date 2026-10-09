@@ -95,7 +95,7 @@ def test_action_budget_counts_controls():
     ledger.observe(rows(10,"B",False),cohort=CohortRef(
         "source-b","source","passive",CollectionMode.PASSIVE,None,None,None,None))
     confirmation=CohortRef("heldout","validation","registered",CollectionMode.CONTROLLED,
-                     "predeclared","matched","", "rnd")
+                     "predeclared","matched",None, None)
     # Malformed assignment is not an admissible shortcut to an intervention.
     import pytest
     with pytest.raises((TypeError,ValueError)):
