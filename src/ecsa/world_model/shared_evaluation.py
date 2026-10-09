@@ -202,3 +202,140 @@ class SharedForecast:
         if any(c=="action:success" and not 0<=v<=1
                for c,v in zip(self.coordinate_ids,self.values)):
             raise ValueError("action success is a probability")
+
+
+
+@dataclass(frozen=True)
+class BackendScore:
+    row_count: int
+    scored_numeric_count: int
+    scored_binary_count: int
+    numeric_normalized_mse: float | None
+    binary_brier: float | None
+    binary_change_f1: float | None
+    action_success_brier: float | None
+    per_action: dict[str, float]
+    per_feature: dict[str, float]
+    coverage: float
+    abstentions: int
+    unseen_feature_count: int
+    interventional_confirmation_count: int
+
+
+class SharedEvaluation:
+    """Evaluate heldout public targets with a fixed common observation mask.
+
+    No forecast is allowed to adjust the truth denominator. Missing forecasts
+    cause incomplete coverage and noncomparable global error, not a smaller
+    evaluation set.
+    """
+    @staticmethod
+    def score(
+        truth: tuple[SharedTarget,...],
+        forecasts: dict[str,tuple[SharedForecast,...]],
+        *,
+        actions: tuple[str,...],
+        intervention_records: tuple[object,...]=(),
+    ) -> dict[str,BackendScore]:
+        if not truth or len(actions)!=len(truth) or not forecasts:
+            raise ValueError("shared evaluation needs matched nonempty trials")
+        frame_ids=truth[0].coordinate_ids
+        if any(t.coordinate_ids!=frame_ids for t in truth):
+            raise ValueError("common target frame dimensions required")
+        frames={
+            f.frame_fingerprint for collection in forecasts.values()
+            for f in collection
+        }
+        if len(frames)!=1:
+            raise ValueError("forecast frame mismatch between predictors")
+        confirmed=sum(
+            getattr(claim,"status",None).value=="interventionally_supported"
+            for claim in intervention_records
+            if getattr(claim,"status",None) is not None
+        )
+        output:dict[str,BackendScore]={}
+        for name, predicted in forecasts.items():
+            if len(predicted)!=len(truth):
+                raise ValueError("all predictors require identical heldout rows")
+            squared:dict[str,list[float]]={key:[] for key in frame_ids}
+            by_action:dict[str,list[float]]={}
+            binary_errors=[]
+            binary_true_positive=0
+            binary_false_positive=0
+            binary_false_negative=0
+            success_errors=[]
+            missing=0
+            available=0
+            abstentions=0
+            numeric_count=0
+            binary_count=0
+            # Determine binary data *only* by a target value stream and
+            # label action outcome by its standardized schema coordinate.
+            binary_feature=set()
+            for j,key in enumerate(frame_ids):
+                samples=[
+                    target.values[j] for target in truth
+                    if target.observed_mask[j]
+                ]
+                if key=="action:success":
+                    continue
+                if samples and all(v in (0.0,1.0) for v in samples):
+                    binary_feature.add(key)
+            for row,(target,estimate,action) in enumerate(zip(truth,predicted,actions)):
+                if estimate.coordinate_ids!=frame_ids:
+                    raise ValueError("forecast target frame mismatch")
+                for j,key in enumerate(frame_ids):
+                    if not target.observed_mask[j]:
+                        continue
+                    available+=1
+                    if not estimate.mask[j]:
+                        missing+=1
+                        abstentions+=1
+                        continue
+                    loss=(target.values[j]-estimate.values[j])**2
+                    squared[key].append(loss)
+                    by_action.setdefault(str(action),[]).append(loss)
+                    if key=="action:success":
+                        success_errors.append(loss)
+                    elif key in binary_feature:
+                        binary_errors.append(loss)
+                        binary_count+=1
+                        positive=estimate.values[j]>=0.5
+                        actual=target.values[j]>=0.5
+                        binary_true_positive+=int(positive and actual)
+                        binary_false_positive+=int(positive and not actual)
+                        binary_false_negative+=int(not positive and actual)
+                    else:
+                        numeric_count+=1
+            def average(values):
+                return sum(values)/len(values) if values else None
+            numeric=[v for key,values in squared.items()
+                     if key!="action:success" and key not in binary_feature
+                     for v in values]
+            total_numeric=sum(
+                target.observed_mask[j]
+                for target in truth for j,key in enumerate(frame_ids)
+                if key!="action:success" and key not in binary_feature
+            )
+            # Empty/missing predictions cannot silently improve the result.
+            numeric_complete=total_numeric==numeric_count
+            numeric_mse=average(numeric) if numeric_complete else None
+            per_action={key:average(values) for key,values in by_action.items()}
+            per_feature={key:average(values) for key,values in squared.items()
+                         if values}
+            denom=2*binary_true_positive+binary_false_positive+binary_false_negative
+            binary_f1=(2*binary_true_positive/denom if denom else None)
+            output[name]=BackendScore(
+                row_count=len(truth),scored_numeric_count=numeric_count,
+                scored_binary_count=binary_count,
+                numeric_normalized_mse=numeric_mse,
+                binary_brier=average(binary_errors),
+                binary_change_f1=binary_f1,
+                action_success_brier=average(success_errors),
+                per_action=per_action,per_feature=per_feature,
+                coverage=(available-missing)/available if available else 0.,
+                abstentions=abstentions,
+                unseen_feature_count=sum(t.unseen_feature_count for t in truth),
+                interventional_confirmation_count=confirmed,
+            )
+        return output
