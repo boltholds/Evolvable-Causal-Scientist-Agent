@@ -181,3 +181,24 @@ class SharedOutcomeFrame:
                 mask.append(True)
         return SharedTarget(tuple(values),tuple(mask),unseen,
                             tuple(c.key for c in self.coordinates))
+
+
+@dataclass(frozen=True)
+class SharedForecast:
+    values: tuple[float,...]
+    mask: tuple[bool,...]
+    coordinate_ids: tuple[str,...]
+    frame_fingerprint: str
+
+    def __post_init__(self):
+        if not self.frame_fingerprint.startswith("shared-public-outcomes:"):
+            raise ValueError("valid shared outcome fingerprint required")
+        if not len(self.values)==len(self.mask)==len(self.coordinate_ids):
+            raise ValueError("forecast dimensions differ")
+        if any(not isfinite(v) for v in self.values):
+            raise ValueError("nonfinite forecast")
+        if len(set(self.coordinate_ids))!=len(self.coordinate_ids):
+            raise ValueError("duplicate forecast coordinate")
+        if any(c=="action:success" and not 0<=v<=1
+               for c,v in zip(self.coordinate_ids,self.values)):
+            raise ValueError("action success is a probability")
