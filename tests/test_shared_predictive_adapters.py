@@ -65,3 +65,39 @@ def test_forecast_wrong_frame_or_invalid_probabilities_rejected():
         SharedForecast((float("nan"),),(True,),("x",),"frame:1")
     with pytest.raises(ValueError):
         SharedForecast((1.4,),(True,),("action:success",),"frame:1")
+
+
+def test_ridge_separates_opaque_action_types_from_same_before_state():
+    from ecsa.world_model.contracts import (
+        GroundAction, RawObservation, RawActionOutcome,
+        InteractionTransition, freeze_raw_value,
+    )
+    from ecsa.world_model.perception.base import (
+        PerceptualObservation, ObservedFeature,
+    )
+    from ecsa.world_model.shared_evaluation import PublicOutcomeTransition
+
+    def transition(index, schema, after_value):
+        before=RawObservation(f"before-{index}",index,freeze_raw_value({}))
+        after=RawObservation(f"after-{index}",index+1,freeze_raw_value({}))
+        event=InteractionTransition(f"opaque-{index}",before,
+                  GroundAction(schema,()),RawActionOutcome(True,freeze_raw_value({})),
+                  after)
+        def percept(raw,value):
+            return PerceptualObservation(raw.observation_id,(),(
+                ObservedFeature("numeric",freeze_raw_value(value),raw.observation_id),))
+        return PublicOutcomeTransition(event,percept(before,0),percept(after,after_value))
+
+    train=tuple(
+        transition(i,"arbitrary::alpha" if i%2==0 else "arbitrary::beta",
+                   1 if i%2==0 else -1)
+        for i in range(24)
+    )
+    frame=SharedOutcomeFrame.fit(train)
+    model=RawRidgePort.fit(frame,train,ridge_lambda=0.01)
+    source=train[0].before
+    a=model.predict_public(source,GroundAction("arbitrary::alpha",()))
+    b=model.predict_public(source,GroundAction("arbitrary::beta",()))
+    index=a.coordinate_ids.index("global:numeric")
+    assert a.values[index]>0
+    assert b.values[index]<0
