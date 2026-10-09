@@ -40,7 +40,7 @@ def test_abstention_does_not_change_common_denominator():
 
 
 def test_macro_action_metric_prevents_majority_type_dominance():
-    examples=tuple(truth(0.) for _ in range(9))+ (truth(1.),)
+    examples=tuple(truth(0.) for _ in range(9))+ (truth(.9),)
     predicted=tuple(forecast(0.) for _ in range(10))
     score=SharedEvaluation.score(examples,{"baseline":predicted},
                                  actions=("frequent",)*9+("rare",))["baseline"]
