@@ -1,0 +1,49 @@
+name: universal-causal-core
+on:
+  push:
+    branches:
+      - 'feat/universal-*'
+    paths:
+      - 'src/ecsa/world_model/**'
+      - 'src/ecsa/autonomy/scientist.py'
+      - 'tests/test_learning_progress.py'
+      - 'tests/test_progress_selection.py'
+      - 'tests/test_scientist_learning_progress.py'
+      - 'tests/test_generic_learning_progress_arena.py'
+      - '.github/workflows/universal-causal-core.yml'
+  pull_request:
+    paths:
+      - 'src/ecsa/world_model/**'
+      - 'src/ecsa/autonomy/scientist.py'
+      - 'tests/test_learning_progress.py'
+      - 'tests/test_progress_selection.py'
+      - 'tests/test_scientist_learning_progress.py'
+      - 'tests/test_generic_learning_progress_arena.py'
+      - '.github/workflows/universal-causal-core.yml'
+  workflow_dispatch:
+
+jobs:
+  core:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install core test dependencies
+        run: pip install -e '.[test]'
+      - name: Universal learning progress and regression checks
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import subprocess
+          import sys
+          paths = [Path("tests") / name for name in (
+              "test_learning_progress.py", "test_progress_selection.py",
+              "test_scientist_learning_progress.py", "test_generic_learning_progress_arena.py",
+              "test_world_model_experiments.py", "test_autonomous_scientist.py",
+          )]
+          present = [str(p) for p in paths if p.exists()]
+          raise SystemExit(subprocess.call([sys.executable, "-m", "pytest", "-q", *present]))
+          PY

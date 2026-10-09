@@ -27,6 +27,7 @@ from .contracts import (
 )
 from .hypotheses import WorldContractHypothesis
 from .perception.base import PerceptualObservation
+from .learning_progress import LearningProgressLedger
 
 
 class ExperimentSelectionMode(StrEnum):
@@ -192,6 +193,8 @@ class ContractExperimentCoordinator:
         use_affordance_scoring: bool = True,
         use_applicability_selection: bool = True,
         use_lifted_selection: bool = True,
+        progress: LearningProgressLedger | None = None,
+        use_progress_scoring: bool = False,
     ) -> None:
         if type(use_affordance_scoring) is not bool:
             raise TypeError("use_affordance_scoring must be bool")
@@ -199,6 +202,14 @@ class ContractExperimentCoordinator:
             raise TypeError("use_applicability_selection must be bool")
         if type(use_lifted_selection) is not bool:
             raise TypeError("use_lifted_selection must be bool")
+        if type(use_progress_scoring) is not bool:
+            raise TypeError("use_progress_scoring must be boolean")
+        if progress is not None and not isinstance(progress, LearningProgressLedger):
+            raise TypeError("progress must be LearningProgressLedger")
+        self.use_progress_scoring = use_progress_scoring
+        self.progress = progress if progress is not None else LearningProgressLedger()
+        self.last_selection_breakdown = None
+        self._last_context_signature: tuple[str, ...] = ()
         self.use_lifted_selection = use_lifted_selection
         self.lifted_applicability = (
             lifted_applicability
@@ -216,6 +227,30 @@ class ContractExperimentCoordinator:
         self.candidates = candidates or StructuralCandidateGenerator(
             history=self.history,
         )
+
+    @staticmethod
+    def context_signature(perception: PerceptualObservation) -> tuple[str, ...]:
+        """Observed structural affordance context, never environment IDs/values."""
+        return tuple(sorted({
+            *(f"global:{item.feature_id}" for item in perception.global_features),
+            *(f"entity:{feature.feature_id}"
+              for entity in perception.entities for feature in entity.features),
+        }))
+
+    def _progress_pick(
+        self,
+        candidates: tuple[ContractExperiment, ...],
+        *,
+        eig: dict[str, float] | None = None,
+    ) -> ContractExperiment:
+        # Avoid a core import cycle: ProgressAwareSelection consumes
+        # ContractExperiment from this module.
+        from .progress_selection import ProgressAwareSelection
+        best, breakdown = ProgressAwareSelection(self.progress).select(
+            candidates, eig=eig or {}, context_signature=self._last_context_signature,
+        )
+        self.last_selection_breakdown = breakdown
+        return best
 
     def record_outcome(
         self,
@@ -244,7 +279,7 @@ class ContractExperimentCoordinator:
         if not experiments:
             raise ValueError("at least one contract experiment is required")
         self.last_selection_mode = ExperimentSelectionMode.STRUCTURAL
-        return min(
+        best = min(
             experiments,
             key=lambda experiment: (
                 -self.history.bootstrap_score(
@@ -259,6 +294,10 @@ class ContractExperimentCoordinator:
                 experiment.experiment_id,
             ),
         )
+        if self.use_progress_scoring:
+            return self._progress_pick(experiments)
+        self.last_selection_breakdown = None
+        return best
 
     def propose(
         self,
@@ -283,6 +322,7 @@ class ContractExperimentCoordinator:
         if not isinstance(budget, ExperimentBudget):
             raise TypeError("budget must be ExperimentBudget")
 
+        self._last_context_signature = self.context_signature(perception)
         ground_actions = self.candidates.propose(
             action_schemas=action_schemas,
             perception=perception,
@@ -380,6 +420,12 @@ class ContractExperimentCoordinator:
                     if backend == "lifted"
                     else ExperimentSelectionMode.APPLICABILITY_EIG
                 )
+                if self.use_progress_scoring:
+                    return self._progress_pick(
+                        tuple(item[1] for item in candidates),
+                        eig={item[1].experiment_id: item[0] for item in candidates},
+                    )
+                self.last_selection_breakdown = None
                 return min(
                     candidates,
                     key=lambda item: (
@@ -450,6 +496,13 @@ class ContractExperimentCoordinator:
                 )
             return self.select_bootstrap(experiments)
         self.last_selection_mode = ExperimentSelectionMode.WORLD_CONTRACT_EIG
+        if self.use_progress_scoring:
+            return self._progress_pick(
+                experiments,
+                eig={experiment.experiment_id: score.information_gain_bits
+                     for score, experiment in scored},
+            )
+        self.last_selection_breakdown = None
         return best_experiment
 
     def select(
