@@ -1,0 +1,44 @@
+name: discoveryworld-paired-progress
+on:
+  push:
+    branches: [feat/paired-learning-progress-discoveryworld-20261009]
+  pull_request:
+    paths:
+      - 'src/ecsa/benchmarks/discoveryworld/arena_b.py'
+      - 'src/ecsa/benchmarks/discoveryworld/paired_progress_arena_b.py'
+      - 'src/ecsa/benchmarks/discoveryworld/progress_metrics.py'
+      - 'src/ecsa/benchmarks/discoveryworld/raw_environment.py'
+      - 'tests/test_discoveryworld_progress_ablation.py'
+      - '.github/workflows/discoveryworld-paired-progress.yml'
+  workflow_dispatch:
+
+jobs:
+  paired:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      OMP_NUM_THREADS: '2'
+      OPENBLAS_NUM_THREADS: '1'
+      MKL_NUM_THREADS: '2'
+      SDL_VIDEODRIVER: dummy
+      SDL_AUDIODRIVER: dummy
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install ECSA and DiscoveryWorld
+        run: pip install -e '.[test,discoveryworld,world-model-planning,mlmd]'
+      - name: Paired progress tests
+        run: python -m pytest -q tests/test_discoveryworld_progress_ablation.py tests/test_discoveryworld_arena_b.py tests/test_world_model_experiments.py tests/test_autonomous_scientist.py
+      - name: Two-seed real DiscoveryWorld smoke ablation
+        run: |
+          python -m ecsa.benchmarks.discoveryworld.paired_progress_arena_b \
+            --seeds 0,1 --max-steps 12 --max-ground-actions 16 \
+            --output results/paired_progress_ci
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: paired-progress-results
+          path: results/paired_progress_ci/
+          if-no-files-found: ignore
