@@ -5,15 +5,9 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-import torch
-
 from ecsa.benchmarks.discoveryworld.jepa_replay import (
     ReplayConfig, load_episode, load_splits, encode_public_json,
 )
-from ecsa.benchmarks.discoveryworld.jepa_probe import (
-    ProbeConfig, run_probe, score_actions, run_probe_from_logs,
-)
-from ecsa.experimental.action_jepa import ActionJEPA, JepaConfig, train_jepa
 
 
 def _episode(root: Path, seed: int, *, arm: str = 'cold', n: int = 42, label: str = 'USE') -> Path:
@@ -109,6 +103,8 @@ def test_study_refuses_single_seed_to_avoid_pseudoreplication(tmp_path: Path) ->
 
 
 def test_dynamic_action_width_preserves_synthetic_default() -> None:
+    torch = pytest.importorskip('torch')
+    from ecsa.experimental.action_jepa import ActionJEPA, JepaConfig
     cfg=JepaConfig(steps=1,seed=0)
     original=ActionJEPA(12,cfg)
     assert original.action_dim == 3
@@ -120,6 +116,8 @@ def test_dynamic_action_width_preserves_synthetic_default() -> None:
 
 
 def test_replay_training_and_controls_produce_finite_diagnostic_metrics(tmp_path: Path) -> None:
+    pytest.importorskip('torch')
+    from ecsa.benchmarks.discoveryworld.jepa_probe import ProbeConfig, run_probe
     for seed in range(3): _episode(tmp_path,seed,n=38)
     splits=load_splits(tmp_path,ReplayConfig(observation_dim=48,action_dim=24),mode='study',arm='cold')
     output=run_probe(splits,ProbeConfig(steps=12,batch_size=16,latent_dim=6,hidden_dim=24,seed=4),device='cpu')
@@ -136,6 +134,8 @@ def test_replay_training_and_controls_produce_finite_diagnostic_metrics(tmp_path
 
 
 def test_smoke_cli_from_existing_discoveryworld_logs(tmp_path: Path) -> None:
+    pytest.importorskip('torch')
+    from ecsa.benchmarks.discoveryworld.jepa_probe import run_probe_from_logs
     _episode(tmp_path,0,n=48)
     out=tmp_path/'result.json'
     result=run_probe_from_logs(tmp_path,output=out,mode='smoke',arm='cold',device='cpu',
