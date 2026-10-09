@@ -4,6 +4,9 @@ from ecsa.world_model.shared_evaluation import SharedOutcomeFrame,SharedForecast
 from ecsa.world_model.predictive_adapters import (
     PersistencePort,RawRidgePort,LatentReadoutPort,
 )
+from pathlib import Path
+import sys
+sys.path.insert(0, str(Path(__file__).parent))
 from test_shared_outcome_frame import sample
 
 
