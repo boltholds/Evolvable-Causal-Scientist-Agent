@@ -14,6 +14,7 @@ from ..world_model.experiments import (
     ExperimentBudget,
 )
 from ..world_model.grounding import InteractionGrounder
+from ..world_model.learning_progress import ProgressEvidence
 from ..world_model.relations import NumericRelationAcquisition
 from ..world_model.text_relations import TextRelationAcquisition
 from ..world_model.kernel import (
@@ -126,4 +127,28 @@ class AutonomousScientist:
             self.relations.observe_transition(transition, before, after)
         if self.text_relations is not None:
             self.text_relations.observe_transition(transition)
+        if self.experiments.use_progress_scoring:
+            # Only public pre/post-action evidence: new raw observations and
+            # proposed contracts are not independent scientific confirmations.
+            def state_signature(perceptual):
+                return tuple(sorted((
+                    f"global:{f.feature_id}:{f.value!r}"
+                    for f in perceptual.global_features
+                ))) + tuple(sorted((
+                    f"entity:{feature.feature_id}:{feature.value!r}"
+                    for entity in perceptual.entities for feature in entity.features
+                )))
+            self.experiments.progress.observe(ProgressEvidence(
+                transition_id=transition.transition_id,
+                action=transition.action,
+                context_signature=self.experiments.context_signature(before),
+                before_signature=state_signature(before),
+                after_signature=state_signature(after),
+                predictive_gain=None,
+                uncertainty_reduction=0.0,
+                confirmed_hypothesis_ids=(),
+                contradicted_hypothesis_ids=(),
+                action_cost=1.0,
+                independent_trial_group=None,
+            ))
         return update
